@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Satchel – School & Browsing Assistant",
+  "short_name": "Satchel",
+  "version": "1.0.0",
+  "description": "A side-panel AI assistant for schoolwork, page research, tabs, and Gmail. You approve every consequential action.",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2URyi1lAkgZ4n1/7k+urV7j6hKRqn3TuBPdf3t53kftxko/jFg1McCMkKbJETo3V8cGJHfgIL+8pZZ2XqsaqrHJXrhGBWGtnb4td4+Rs0gVKadoK1+C3Vxy9I4KLZ48aUR+OdAWIBTryJlhnOGX4DpBwsC9R6esPmZYATKu/nwdD3SNudDMNuC79VLww9waO7N5wCc2jD1WX77krlJMKlEABsUbiJZR9Ul6tKQ0R+CvWIMBdytyai8uGXwWO9Javqyb6ueRzWDPHQcHlAIjlvcn9xOSXs1HkCOs7iK1tGJgGef3u5E8QeXBowG2wfajNsdNhSYULc3ai9SbTTrA5owIDAQAB",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": {
+    "default_title": "Open Satchel",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png" }
+  },
+  "side_panel": { "default_path": "sidepanel/sidepanel.html" },
+  "background": { "service_worker": "background/service-worker.js", "type": "module" },
+  "options_page": "options/options.html",
+  "permissions": ["sidePanel", "storage", "tabs", "tabGroups", "scripting", "activeTab", "nativeMessaging"],
+  "optional_permissions": ["identity"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Open Satchel"
+    }
+  }
+}
