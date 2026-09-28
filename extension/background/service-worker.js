@@ -3,12 +3,11 @@
 // There is NO background monitoring of browsing: nothing runs unless the user clicks something.
 import { fetchPageInBackground } from '../lib/browser.js';
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-});
-chrome.runtime.onStartup.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-});
+// Clicking the toolbar icon opens the side panel (set on every service worker start; it is cheap).
+const openOnClick = () => chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+openOnClick();
+chrome.runtime.onInstalled.addListener(openOnClick);
+chrome.runtime.onStartup.addListener(openOnClick);
 
 const handlers = {
   // Loads each school page the user chose in a background tab (using their signed-in session),

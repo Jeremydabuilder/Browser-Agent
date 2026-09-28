@@ -3,6 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -116,4 +117,20 @@ test('error log never contains prompt text or the key', { skip: !hasPwsh }, asyn
   assert.equal(log.includes(FAKE_KEY), false);
   assert.equal(log.includes('Hello'), false);
   writeFileSync(logPath, '');
+});
+
+test('every companion PowerShell script parses without syntax errors', { skip: !hasPwsh }, () => {
+  const script = `$bad = 0; Get-ChildItem '${path.join(root, 'companion/windows')}' -Filter *.ps1 | ForEach-Object { $t = $null; $e = $null; [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$t, [ref]$e) | Out-Null; if ($e.Count) { $bad++; Write-Output ($_.Name + ': ' + ($e | ForEach-Object { $_.Message }) -join '; ') } }; exit $bad`;
+  const r = spawnSync('pwsh', ['-NoProfile', '-Command', script]);
+  assert.equal(r.status, 0, r.stdout.toString() + r.stderr.toString());
+});
+
+test('the installer registers the host for both Chrome and Edge with only Satchel allowed', () => {
+  const src = readFileSync(path.join(root, 'companion/windows/install.ps1'), 'utf8');
+  assert.match(src, /HKCU:\\Software\\Google\\Chrome\\NativeMessagingHosts/);
+  assert.match(src, /HKCU:\\Software\\Microsoft\\Edge\\NativeMessagingHosts/);
+  const common = readFileSync(path.join(root, 'companion/windows/SatchelCommon.ps1'), 'utf8');
+  const manifest = JSON.parse(readFileSync(path.join(root, 'extension/manifest.json'), 'utf8'));
+  const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map((h) => String.fromCharCode(97 + parseInt(h, 16))).join('');
+  assert.match(common, new RegExp(`SatchelExtensionId = '${id}'`), 'companion trusts exactly the ID derived from the manifest key');
 });

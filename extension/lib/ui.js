@@ -64,7 +64,7 @@ export function modal({ title, body, actions = [{ label: 'OK', value: true, kind
     const overlay = h('div', { class: 'overlay', onclick: (e) => { if (e.target === overlay) close(null); } }, dialog);
     document.body.append(overlay);
     document.addEventListener('keydown', onKey);
-    (dialog.querySelector('input, textarea, select') || footer.querySelector('.primary') || footer.querySelector('button'))?.focus();
+    (dialog.querySelector('input:not([type=checkbox]):not([type=file]), textarea, select') || footer.querySelector('.primary') || footer.querySelector('button'))?.focus();
   });
 }
 

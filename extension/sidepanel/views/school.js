@@ -19,9 +19,10 @@ let setupOpen = null; // remembers whether the setup section is expanded across 
 export function init(container, appRef) {
   root = container;
   app = appRef;
-  app.onTargetTab(() => { if (!root.hidden) render(); });
+  // Re-render when the current tab changes, but never while the user is typing in this view.
+  app.onTargetTab(() => { if (!root.hidden && !busy && !root.contains(document.activeElement) && !document.querySelector('.overlay')) render(); });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && (changes.assignments || changes.school) && !root.hidden && !busy) render();
+    if (area === 'local' && (changes.assignments || changes.school) && !root.hidden && !busy && !document.querySelector('.overlay')) render();
   });
 }
 

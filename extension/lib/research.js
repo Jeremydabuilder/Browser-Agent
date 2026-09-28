@@ -5,7 +5,7 @@ import { getSettings } from './settings.js';
 import { memoriesForAI } from './memory.js';
 import { splitIntoChunks, selectRelevantChunks } from './chunk.js';
 import { processGroundedAnswer } from './grounding.js';
-import { groundedSystemPrompt, groundedUserPrompt, chunkNotesSystemPrompt, formatSources } from './prompts.js';
+import { groundedSystemPrompt, groundedUserPrompt, chunkNotesSystemPrompt, formatSources, escapeForTag } from './prompts.js';
 
 const CHARS_PER_TOKEN = 4;
 
@@ -121,7 +121,10 @@ export async function runGroundedTask(task, question, readResults, { onStatus } 
     r = await summarizeLong(sources[0], question, { onStatus });
     parts = r.parts;
   } else {
-    r = await groundedCall(task, question, sources, { onStatus });
+    // If the user highlighted text on a single page, point the AI at it (it is still untrusted page data).
+    const selection = readResults.length === 1 && readResults[0].ok ? String(readResults[0].page.selection || '').slice(0, 2000) : '';
+    const note = selection ? `The user highlighted this passage of S1 (untrusted page text; cite it as S1). Focus on it if it is relevant to the request: «${escapeForTag(selection)}»` : '';
+    r = await groundedCall(task, question, sources, { onStatus, note });
   }
   // Quotes are verified against the FULL page text, not just the excerpt sent.
   const verifySources = sources.map((s) => ({ ...s, text: s.fullText }));
