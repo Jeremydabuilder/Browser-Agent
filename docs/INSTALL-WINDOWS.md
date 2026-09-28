@@ -7,6 +7,8 @@ You need:
 * Google Chrome (version 116 or newer) and/or Microsoft Edge (version 116 or newer)
 * A free Groq account for the AI: <https://console.groq.com>
 
+> **What has been tested so far (please read).** Satchel was built and tested on Linux in Chromium, with the companion running under PowerShell 7 and a simulated Groq service. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Microsoft Edge, a real Groq key, and real Google sign-in for Gmail and Classroom. This guide describes how those parts are designed to work. If a step behaves differently, run `status.cmd` and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
+
 ---
 
 ## 1. Download Satchel
@@ -99,7 +101,7 @@ Open Satchel by clicking its toolbar icon or pressing **Alt+Shift+S**. It opens 
 * **Saved groups** at the bottom let you reopen, rename, or delete what you saved.
 
 ### Email
-Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. After that:
+Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **Google sign-in has not yet been tested with a real Google account**, so treat Gmail and Classroom as unverified (see the note at the top of that guide). After setup:
 * **Connect** “Gmail: read the threads you pick”. Search (e.g. `is:unread`), tick threads, and press **Summarize**.
 * **Draft reply**: the recipient and subject come from the thread itself. Type what you want to say and press **Draft** to have the AI write it, then edit freely.
 * **Review & send…** shows the recipients, subject, and complete message. Sending needs the separate “Gmail: send replies you approve” connection, plus your click on **Send email** for each message. Without the send connection, use **Copy text** and send from Gmail yourself.

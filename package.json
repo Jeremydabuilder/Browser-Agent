@@ -11,7 +11,8 @@
     "test:all": "npm test && npm run test:companion && npm run test:e2e",
     "lint": "node scripts/check.mjs",
     "build": "node scripts/build.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test:e2e:dist": "node tests/e2e/run-e2e.mjs --from-dist"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

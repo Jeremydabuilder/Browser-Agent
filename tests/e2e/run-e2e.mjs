@@ -10,7 +10,7 @@
 //
 // Requirements: Playwright's Chromium and `pwsh` (PowerShell 7) on PATH.
 import { chromium } from 'playwright';
-import { mkdtempSync, writeFileSync, mkdirSync, cpSync, readFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, cpSync, readFileSync, chmodSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,16 +56,32 @@ mkdirSync(path.join(userData, 'NativeMessagingHosts'), { recursive: true });
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(path.join(dataDir, 'groq-key.dev.txt'), FAKE_KEY);
 
+// --from-dist (or SATCHEL_E2E_FROM_DIST=1) tests a fresh install from the release ZIPs (as a user would download them)
+// instead of the source folders.
+const fromDist = process.argv.includes('--from-dist') || !!process.env.SATCHEL_E2E_FROM_DIST;
+let extSource = path.join(root, 'extension');
+let hostScript = path.join(root, 'companion/windows/satchel-host.ps1');
+if (fromDist) {
+  const build = spawnSync(process.execPath, [path.join(root, 'scripts/build.mjs')], { stdio: 'inherit' });
+  if (build.status !== 0) process.exit(1);
+  for (const zip of ['satchel-extension.zip', 'satchel-companion-windows.zip']) {
+    const u = spawnSync('unzip', ['-q', path.join(root, 'dist', zip), '-d', path.join(work, 'download')]);
+    if (u.status !== 0) { console.error(`Could not extract ${zip}: ${u.stderr}`); process.exit(1); }
+  }
+  extSource = path.join(work, 'download/satchel-extension');
+  hostScript = path.join(work, 'download/satchel-companion/satchel-host.ps1');
+}
+
 // Launcher equivalent to satchel-host.bat on Windows.
 const launcher = path.join(work, 'satchel-host.sh');
-writeFileSync(launcher, `#!/bin/sh\nexport SATCHEL_DATA_DIR='${dataDir}'\nexport SATCHEL_GROQ_BASE_URL='${groq.url}'\nexec pwsh -NoLogo -NoProfile -NonInteractive -File '${path.join(root, 'companion/windows/satchel-host.ps1')}' "$@"\n`);
+writeFileSync(launcher, `#!/bin/sh\nexport SATCHEL_DATA_DIR='${dataDir}'\nexport SATCHEL_GROQ_BASE_URL='${groq.url}'\nexec pwsh -NoLogo -NoProfile -NonInteractive -File '${hostScript}' "$@"\n`);
 chmodSync(launcher, 0o755);
 writeFileSync(path.join(userData, 'NativeMessagingHosts', 'com.satchel.companion.json'), JSON.stringify({
   name: 'com.satchel.companion', description: 'Satchel companion (test)', path: launcher, type: 'stdio', allowed_origins: [`chrome-extension://${EXT_ID}/`],
 }));
 
 const extDir = path.join(work, 'extension');
-cpSync(path.join(root, 'extension'), extDir, { recursive: true });
+cpSync(extSource, extDir, { recursive: true });
 const manifest = JSON.parse(readFileSync(path.join(extDir, 'manifest.json'), 'utf8'));
 manifest.host_permissions = ['http://127.0.0.1/*'];
 writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -143,7 +159,7 @@ async function storage(area, key) {
   return sw.evaluate(async ([a, k]) => (await chrome.storage[a].get(k))[k], [area, key]);
 }
 
-console.log(`Satchel end-to-end test (extension ${extId}, headless=${headless})`);
+console.log(`Satchel end-to-end test (extension ${extId}, headless=${headless}, source=${fromDist ? 'release ZIPs' : 'repository folders'})`);
 
 // ---- tests -----------------------------------------------------------------------------------
 await step('extension loads with the fixed ID so the companion only trusts it', async () => {
@@ -520,6 +536,14 @@ await step('No Groq key is stored anywhere in browser storage', async () => {
 await context.close();
 await groq.close();
 await site.close();
+
+await step('API key is absent from every file in the browser profile and the companion logs', async () => {
+  const walk = (d) => readdirSync(d).flatMap((f) => { const p = path.join(d, f); try { return statSync(p).isDirectory() ? walk(p) : [p]; } catch { return []; } });
+  const files = [...walk(userData), ...walk(dataDir).filter((f) => !f.endsWith('groq-key.dev.txt'))];
+  const hits = files.filter((f) => { try { return readFileSync(f).includes(FAKE_KEY); } catch { return false; } });
+  assert.deepEqual(hits, [], `key found in: ${hits.join(', ')}`);
+  assert.ok(files.length > 50, `scanned ${files.length} files`);
+});
 rmSync(work, { recursive: true, force: true });
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} end-to-end checks passed. Screenshots: tests/e2e/.artifacts/`);

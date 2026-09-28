@@ -14,8 +14,7 @@
   "side_panel": { "default_path": "sidepanel/sidepanel.html" },
   "background": { "service_worker": "background/service-worker.js", "type": "module" },
   "options_page": "options/options.html",
-  "permissions": ["sidePanel", "storage", "tabs", "tabGroups", "scripting", "activeTab", "nativeMessaging"],
-  "optional_permissions": ["identity"],
+  "permissions": ["sidePanel", "storage", "tabs", "tabGroups", "scripting", "activeTab", "nativeMessaging", "identity"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "commands": {
     "_execute_action": {

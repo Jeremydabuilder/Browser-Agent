@@ -1,7 +1,7 @@
 // "Email" view: summarize selected Gmail threads, draft replies, and send only after the user
 // reviews the recipient, subject and complete message and confirms.
 import { h, clear, link, toast, modal, confirmSendToAI, renderRichText, spinner } from '../../lib/ui.js';
-import { GOOGLE_SERVICES, getConnections, connect, disconnect, requestIdentityPermission, GoogleError } from '../../lib/google-auth.js';
+import { GOOGLE_SERVICES, getConnections, connect, disconnect, GoogleError } from '../../lib/google-auth.js';
 import { listThreads, getThread, buildReplyDraft, validateOutgoing, sendMessage, threadForPrompt, splitAddresses } from '../../lib/gmail.js';
 import { chat, friendlyError } from '../../lib/ai.js';
 import { getSettings } from '../../lib/settings.js';
@@ -70,22 +70,17 @@ function renderConnections(settings) {
     h('p', { class: 'muted small' }, 'Google Classroom can be connected in Settings → Google.'));
 }
 
-function onConnect(key) {
-  // The identity permission prompt must be requested inside the click.
-  const perm = requestIdentityPermission();
-  perm.then(async (granted) => {
-    if (!granted) { toast('Satchel needs the "identity" permission to sign in with Google.', 'error'); return; }
-    setStatus(spinner('Opening Google sign-in…'));
-    try {
-      await connect(key);
-      setStatus(null);
-      toast('Connected.');
-      state.threads = [];
-      render();
-    } catch (err) {
-      setStatus(renderGoogleError(err));
-    }
-  });
+async function onConnect(key) {
+  setStatus(spinner('Opening Google sign-in…'));
+  try {
+    await connect(key);
+    setStatus(null);
+    toast('Connected.');
+    state.threads = [];
+    render();
+  } catch (err) {
+    setStatus(renderGoogleError(err));
+  }
 }
 
 function renderGoogleError(err) {

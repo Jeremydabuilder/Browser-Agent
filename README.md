@@ -22,6 +22,18 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 3. Double-click `companion\windows\install.cmd` and paste your Groq API key from <https://console.groq.com/keys>.
 4. Restart the browser, click the Satchel toolbar icon (or press **Alt+Shift+S**), and check that the header says **AI: ready**.
 
+## Verification status
+
+| Part | Status |
+|---|---|
+| Extension UI and logic in Chromium (Ask, School, Tabs, Memory, Settings) | **Tested automatically:** unit tests plus a 27-step browser test on the real extension, run from both the source folder and the release ZIP |
+| Companion protocol (`satchel-host.ps1`) | **Tested** under PowerShell 7 on Linux through Chromium native messaging, with a simulated Groq service |
+| API key never stored in the browser | **Tested:** after the browser test, every file in the Chromium profile and the companion's log folder is scanned for the key |
+| Windows installer, registry registration, `.bat` launcher, DPAPI, Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
+| Microsoft Edge | **Not tested** |
+| A real Groq key and API | **Not tested**; Groq's API was unreachable from the build environment |
+| Google sign-in for Gmail read, Gmail send, and Classroom | **Not tested with a real Google account.** The UI and API handling are tested only against simulated Google responses. Sign-in uses Google's implicit flow, which Google discourages; see [docs/GOOGLE-SETUP.md](docs/GOOGLE-SETUP.md) |
+
 ## Repository layout
 
 ```
@@ -52,6 +64,7 @@ npm run lint           # static checks: manifest refs, imports, syntax, no secre
 npm test               # unit tests
 npm run test:companion # real PowerShell companion over native-messaging framing (fake Groq)
 npm run test:e2e       # real extension in Chromium + real companion (fake Groq, simulated Google APIs)
+npm run test:e2e:dist  # same, but from freshly built release ZIPs (fresh-install check)
 npm run build          # dist/satchel-extension/, dist/satchel-extension.zip, dist/satchel-companion-windows.zip
 ```
 

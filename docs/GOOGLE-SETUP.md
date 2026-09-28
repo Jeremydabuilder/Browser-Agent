@@ -1,5 +1,9 @@
 # Connecting Gmail and Google Classroom
 
+> **Verification status: not tested with a real Google account.** The Gmail read, Gmail send, and Google Classroom connections have been checked only against simulated Google API responses in automated tests. The actual Google sign-in window has **not** been run with a newly created OAuth client, because the development environment had no Google account and could not reach Google's sign-in pages. Treat these connections as **unverified** until you complete checks E1–E9 in [MANUAL-TESTS.md](MANUAL-TESTS.md).
+>
+> Known risk: Satchel signs in with Google's *client-side (implicit) flow* (`response_type=token`), because it works the same way in Chrome and Edge without a client secret. Google still documents this flow, but it discourages it in favor of newer methods. If Google rejects it for your new client (for example with `unsupported_response_type` or a “disallowed” error), Gmail and Classroom won't connect, and the rest of Satchel is unaffected.
+
 Google services are optional. Everything else in Satchel works without them.
 
 ## Why a setup step is needed
@@ -40,7 +44,6 @@ Access tokens are kept in memory only (browser session storage). They expire aft
    * Click **Create** and copy the **Client ID** (it ends with `.apps.googleusercontent.com`). No client secret is needed.
 5. In Satchel, open ⚙️ **Settings → Google**, paste the client ID, and click **Save**.
 6. In the **Email** view (or Settings → Google), click **Connect** next to a connection.
-   * The browser asks for the **identity** permission once. Click **Allow**.
    * A Google window opens. Choose your account.
    * Because the app is in Testing mode, Google warns that it **hasn't verified this app**. Click **Continue** (you created the app yourself).
    * Leave the requested permission ticked and click **Continue**.

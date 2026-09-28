@@ -1,6 +1,6 @@
 import { getSettings, updateSettings } from '../lib/settings.js';
 import { ping, listModels, friendlyError } from '../lib/ai.js';
-import { GOOGLE_SERVICES, getConnections, connect, disconnect, disconnectAll, requestIdentityPermission } from '../lib/google-auth.js';
+import { GOOGLE_SERVICES, getConnections, connect, disconnect, disconnectAll } from '../lib/google-auth.js';
 import { listAssignments, clearAssignments } from '../lib/school.js';
 import { setItem } from '../lib/storage.js';
 import { h, clear, toast, confirmDialog } from '../lib/ui.js';
@@ -57,12 +57,9 @@ async function renderConnections() {
       ? h('button', { class: 'btn small', onclick: async () => { await disconnect(key); renderConnections(); } }, 'Disconnect')
       : h('button', {
         class: 'btn small primary', disabled: !settings.googleClientId,
-        onclick: () => {
-          requestIdentityPermission().then(async (ok) => {
-            if (!ok) { toast('The identity permission is needed to sign in with Google.', 'error'); return; }
-            try { await connect(key); toast('Connected.'); } catch (err) { toast(err.message, 'error'); }
-            renderConnections();
-          });
+        onclick: async () => {
+          try { await connect(key); toast('Connected.'); } catch (err) { toast(err.message, 'error'); }
+          renderConnections();
         },
       }, 'Connect');
     wrap.append(h('div', { class: 'mem' }, h('div', { class: 'row' }, h('div', {}, h('b', {}, s.label), h('div', { class: 'muted small' }, s.explain),
@@ -79,7 +76,7 @@ async function main() {
   $('use-memories').checked = s.useMemoriesInAI;
   $('date-order').value = s.dateOrder;
   $('client-id').value = s.googleClientId;
-  $('redirect-uri').textContent = chrome.identity?.getRedirectURL ? chrome.identity.getRedirectURL() : `https://${chrome.runtime.id}.chromiumapp.org/`;
+  $('redirect-uri').textContent = chrome.identity.getRedirectURL();
   const cached = await chrome.storage.local.get('modelCache');
   await fillModels(cached.modelCache?.models || []);
 

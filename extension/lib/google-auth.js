@@ -89,9 +89,6 @@ async function runAuthFlow(scopes, interactive) {
   if (!googleClientId) {
     throw new GoogleError('setup', 'Google is not set up yet. Open Satchel Settings → Google and paste your OAuth client ID (the guide there walks you through creating one).');
   }
-  if (!chrome.identity?.launchWebAuthFlow) {
-    throw new GoogleError('setup', 'The "identity" permission has not been granted. Click Connect again and allow it.');
-  }
   const state = crypto.randomUUID();
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', googleClientId.trim());
@@ -103,7 +100,12 @@ async function runAuthFlow(scopes, interactive) {
   url.searchParams.set('prompt', interactive ? 'consent' : 'none');
   let responseUrl;
   try {
-    responseUrl = await chrome.identity.launchWebAuthFlow({ url: url.toString(), interactive });
+    responseUrl = await chrome.identity.launchWebAuthFlow({
+      url: url.toString(),
+      interactive,
+      // Silent refresh: let Google's sign-in page finish its own redirects instead of aborting on first load.
+      ...(interactive ? {} : { abortOnLoadForNonInteractive: false, timeoutMsForNonInteractive: 10000 }),
+    });
   } catch (err) {
     const msg = String(err?.message || err);
     if (!interactive) throw new GoogleError('reconnect', 'Your Google session expired. Click Connect to sign in again.');
@@ -111,11 +113,6 @@ async function runAuthFlow(scopes, interactive) {
     throw new GoogleError('auth_failed', `Google sign-in could not start: ${msg}`);
   }
   return parseAuthResponse(responseUrl, state);
-}
-
-/** Must be called from a click handler (the identity permission prompt needs a user gesture). */
-export function requestIdentityPermission() {
-  return chrome.permissions.request({ permissions: ['identity'] });
 }
 
 export async function connect(serviceKey) {

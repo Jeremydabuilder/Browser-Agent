@@ -44,12 +44,12 @@ Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick ea
 - [ ] D7. Closing a single unpinned tab with × works without a prompt. Closing a pinned tab with × asks first.
 
 ## E. Email (after [Google setup](GOOGLE-SETUP.md))
-- [ ] E1. Email → **Connect** Gmail read: the identity permission prompt, then the Google consent (unverified-app warning; Continue). It shows “Connected as …”.
+- [ ] E1. Email → **Connect** Gmail read: the Google consent window opens (unverified-app warning; Continue). It shows “Connected as …”. *Not yet verified by anyone. If this fails, record the exact Google error text.*
 - [ ] E2. Threads load. Search `is:unread` works.
 - [ ] E3. Tick a thread → **Summarize**: the consent notice lists the thread, then a summary and to-dos appear.
 - [ ] E4. **Draft reply**: To and Subject are prefilled from the thread. Type an instruction → **Draft** → the body is filled. Edit it.
 - [ ] E5. **Review & send…** without the send connection: the review shows everything, **Send email** is disabled, and it explains how to connect sending.
-- [ ] E6. Connect **Gmail: send replies you approve** → Review & send → **Send email**. The message arrives in the same thread in Gmail (check your Sent folder).
+- [ ] E6. Connect **Gmail: send replies you approve** (a second, separate consent) → Review & send → **Send email**. The message arrives in the same thread in Gmail (check your Sent folder).
 - [ ] E7. School account (if blocked by the admin): connecting shows the explanation, and Ask, School, and Tabs still work.
 - [ ] E8. Settings → Google → connect **Classroom** → School → **Import Classroom**. Coursework appears with class names and due dates, and turned-in work is marked done.
 - [ ] E9. **Disconnect all Google access**. <https://myaccount.google.com/permissions> no longer lists the app, or it shows as revoked.

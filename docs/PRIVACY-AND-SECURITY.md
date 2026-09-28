@@ -26,7 +26,7 @@ Satchel has **no background monitoring**. The service worker only sets up the si
 | `scripting` | Run the read-only page extractor on pages you ask about |
 | `activeTab` | Temporary access to the tab you invoked Satchel on |
 | `nativeMessaging` | Talk to the Windows companion that holds the Groq key |
-| `identity` (optional) | Google sign-in; requested only when you click Connect |
+| `identity` | Opens Google's sign-in window when you click Connect. It shows no install warning and gives no access to data by itself; each Google service still needs your consent on Google's own screen. (It was optional in an earlier version, but that can't be reliably tested, so it is now a normal permission.) |
 | Site access (optional, per site) | Requested for each site the first time you ask Satchel to read it. Nothing is granted at install time. Revoke any site in the extension's Details page. |
 
 ## Companion hardening
