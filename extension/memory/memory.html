@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Satchel Memory</title>
+  <link rel="stylesheet" href="../styles/common.css">
+  <link rel="stylesheet" href="../styles/page.css">
+</head>
+<body>
+  <div class="page">
+    <div class="page-header"><img src="../icons/icon48.png" alt="" width="32" height="32"><h1>Memory</h1></div>
+    <p class="muted">These are short notes you chose to save: preferences, ongoing projects, and useful facts. Satchel may include them in AI requests so answers fit you (switch any off below). Satchel never saves memories on its own, and chat history is kept separately and cleared when you close the browser.</p>
+    <section class="card">
+      <h2>Add a memory</h2>
+      <div class="row">
+        <div style="flex:0 0 150px"><label for="new-kind">Type</label><select id="new-kind"><option value="preference">Preference</option><option value="project">Project</option><option value="fact">Fact</option></select></div>
+        <div><label for="new-text">Note (max 500 characters)</label><input type="text" id="new-text" maxlength="500" placeholder="e.g. I prefer summaries as bullet points"></div>
+        <button class="btn primary" id="add">Add</button>
+      </div>
+      <p class="error small" id="add-error"></p>
+    </section>
+    <section class="card">
+      <div class="row">
+        <div><input type="search" id="filter" placeholder="Search memories" aria-label="Search memories"></div>
+        <div style="flex:0 0 150px"><select id="kind-filter" aria-label="Filter by type"><option value="">All types</option><option value="preference">Preferences</option><option value="project">Projects</option><option value="fact">Facts</option></select></div>
+      </div>
+      <div id="list"></div>
+      <div class="btn-row">
+        <button class="btn" id="export">Export (JSON)</button>
+        <label class="btn" for="import-file" style="margin:0;color:var(--fg)">Import…</label><input type="file" id="import-file" accept="application/json,.json" hidden>
+        <button class="btn danger" id="delete-all">Delete all memories</button>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="memory.js"></script>
+</body>
+</html>

@@ -65,3 +65,22 @@ test('chunking splits on paragraphs and relevance selection fits the budget', ()
   const huge = splitIntoChunks('word. '.repeat(5000), 1000);
   assert.ok(huge.every((c) => c.length <= 1001));
 });
+
+test('research sources: unreadable tabs are listed separately and long sources are fitted to the budget', async () => {
+  const { buildSources, fitSources } = await import('../../extension/lib/research.js');
+  const long = Array.from({ length: 200 }, (_, i) => `Paragraph ${i} ${i === 150 ? 'the mitochondria is the powerhouse' : 'unrelated filler content here'}.`).join('\n');
+  const { sources, unreadable } = buildSources([
+    { ok: true, page: { title: 'Long', url: 'https://a/long', text: long }, tab: {} },
+    { ok: false, tab: { title: 'Settings', url: 'chrome://settings' }, reason: 'Browser pages cannot be read.' },
+    { ok: true, page: { title: 'Short', url: 'https://b/short', text: 'Short page text.' }, tab: {} },
+  ]);
+  assert.deepEqual(sources.map((s) => s.id), ['S1', 'S2']);
+  assert.equal(unreadable.length, 1);
+  assert.equal(unreadable[0].url, 'chrome://settings');
+  const { fitted, trimmed } = fitSources(sources, 'what is the powerhouse', 2000);
+  assert.equal(trimmed, true);
+  assert.ok(fitted[0].text.length <= 1100);
+  assert.match(fitted[0].text, /powerhouse/);
+  assert.equal(fitted[1].text, 'Short page text.');
+  assert.equal(fitted[0].fullText, long, 'full text kept for quote verification');
+});
