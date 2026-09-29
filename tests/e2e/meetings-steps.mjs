@@ -318,6 +318,7 @@ export async function runMeetingSteps(env) {
     assert.equal(killed.status, 0, 'browser process was killed');
     await context.close().catch(() => {});
     context = await launch();
+    env.watchConsole?.(context);
     sw = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     const pagePromise = context.waitForEvent('page', (p) => p.url().includes('sidepanel.html'));
     await sw.evaluate((url) => chrome.windows.create({ url, type: 'popup', width: 420, height: 900 }), `chrome-extension://${extId}/sidepanel/sidepanel.html`);

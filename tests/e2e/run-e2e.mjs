@@ -34,7 +34,9 @@ if (spawnSync('pwsh', ['-v']).status !== 0) {
 }
 
 const results = [];
+const consoleLog = []; // browser console output, saved next to the screenshot when a step fails
 async function step(name, fn) {
+  const logStart = consoleLog.length;
   const started = Date.now();
   try {
     await fn();
@@ -44,6 +46,7 @@ async function step(name, fn) {
     results.push({ name, ok: false, error: err });
     console.log(`  ✗ ${name}\n    ${String(err.stack || err).split('\n').slice(0, 6).join('\n    ')}`);
     await panel?.screenshot({ path: path.join(artifacts, `FAIL-${name.replace(/\W+/g, '_')}.png`) }).catch(() => {});
+    writeFileSync(path.join(artifacts, `FAIL-${name.replace(/\W+/g, '_')}.console.txt`), consoleLog.slice(logStart).join('\n'));
     // Close any dialog left open so one failure doesn't cascade into the next steps.
     for (let i = 0; i < 3; i++) await panel?.keyboard.press('Escape').catch(() => {});
   }
@@ -62,7 +65,8 @@ writeFileSync(path.join(dataDir, 'groq-key.dev.txt'), FAKE_KEY);
 // --from-dist (or SATCHEL_E2E_FROM_DIST=1) tests a fresh install from the release ZIPs (as a user would download them)
 // instead of the source folders.
 const fromDist = process.argv.includes('--from-dist') || !!process.env.SATCHEL_E2E_FROM_DIST;
-let extSource = path.join(root, 'extension');
+// SATCHEL_E2E_EXTENSION_DIR tests another copy of the extension (e.g. an instrumented one while debugging).
+let extSource = process.env.SATCHEL_E2E_EXTENSION_DIR || path.join(root, 'extension');
 let hostScript = path.join(root, 'companion/windows/satchel-host.ps1');
 if (fromDist) {
   const build = spawnSync(process.execPath, [path.join(root, 'scripts/build.mjs')], { stdio: 'inherit' });
@@ -104,6 +108,8 @@ const launch = () => chromium.launchPersistentContext(userData, {
   ],
 });
 let context = await launch();
+const watchConsole = (ctx) => ctx.on('page', (p) => p.on('console', (m) => consoleLog.push(`[${new URL(p.url() || 'about:blank').pathname}] ${m.type()}: ${m.text()}`)));
+watchConsole(context);
 let sw = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
 const extId = new URL(sw.url()).host;
 let panel;
@@ -545,7 +551,7 @@ await step('No Groq key is stored anywhere in browser storage', async () => {
 });
 
 // ---- meetings (recording, import, transcription, notes, recovery) ----
-({ context, sw, panel } = await runMeetingSteps({ step, context, sw, panel, extId, userData, site, groq, openPanel: () => openPanel(), launch, work, artifacts, headless, storage: (a, k) => sw.evaluate(async ([ar, ke]) => (await chrome.storage[ar].get(ke))[ke], [a, k]), clickModalButton, showView: (n) => panel.click(`.tabs button[data-view="${n}"]`) }));
+({ context, sw, panel } = await runMeetingSteps({ step, context, sw, panel, extId, userData, watchConsole, site, groq, openPanel: () => openPanel(), launch, work, artifacts, headless, storage: (a, k) => sw.evaluate(async ([ar, ke]) => (await chrome.storage[ar].get(ke))[ke], [a, k]), clickModalButton, showView: (n) => panel.click(`.tabs button[data-view="${n}"]`) }));
 
 // ---- teardown ----------------------------------------------------------------------------------
 await context.close();
