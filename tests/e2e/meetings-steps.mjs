@@ -6,12 +6,14 @@
 // (auto-selected with a Chromium test flag), and the microphone (Chromium's fake device).
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { toneWav } from '../support/fixture-server.mjs';
+import { waitForExtPage } from './pages.mjs';
 
 export async function runMeetingSteps(env) {
-  const { step, extId, site, groq, launch, work, artifacts, headless, clickModalButton, userData } = env;
+  const { step, extId, site, groq, launch, work, artifacts, headless, clickModalButton, userData, browser = 'chromium' } = env;
   let { context, sw, panel } = env;
   const storage = (area, key) => sw.evaluate(async ([a, k]) => (await chrome.storage[a].get(k))[k], [area, key]);
   const setSettings = (patch) => sw.evaluate(async (p) => { const s = (await chrome.storage.local.get('settings')).settings || {}; await chrome.storage.local.set({ settings: { ...s, ...p } }); }, patch);
@@ -178,6 +180,36 @@ export async function runMeetingSteps(env) {
     assert.equal((await meetingsList()).some((m) => m.id === importedId), false);
   });
 
+  // Zoom-style recordings: AAC-LC 32 kHz mono M4A ("audio_only.m4a") and an MP4 with an AAC track.
+  // Open-source Chromium has no AAC decoder, so this runs in Microsoft Edge (or branded Chrome) only.
+  const audioFixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/audio');
+  for (const file of ['audio_only.m4a', 'zoom_0.mp4']) {
+    await step(`Meetings: import a Zoom-style ${file} (AAC) and transcribe it in order${browser === 'edge' ? '' : ' [SKIPPED: Chromium lacks AAC]'}`, async () => {
+      if (browser !== 'edge') return;
+      await showMeetings();
+      const summary = panel.locator('#view-meetings summary', { hasText: 'Import a recording' });
+      if (!(await panel.locator('#view-meetings input[type=file]').isVisible())) await summary.click();
+      await panel.setInputFiles('#view-meetings input[type=file]', path.join(audioFixtures, file));
+      await panel.fill('#view-meetings input[placeholder^="Title (defaults"]', `Zoom ${file}`);
+      await panel.locator('#view-meetings').getByRole('button', { name: 'Import', exact: true }).click();
+      await panel.locator('#view-meetings .title-input').waitFor({ timeout: 30000 });
+      const m = (await meetingsList()).find((x) => x.title === `Zoom ${file}`);
+      assert.ok(m, 'meeting created');
+      const parts = await chunksOf(m.id);
+      assert.deepEqual(parts.map((c) => c.startSec), [0, 12, 24], 'decoded and split into three 12-second parts');
+      await panel.click('#view-meetings button:has-text("Transcribe with Groq")');
+      await clickModalButton(panel, 'Send audio to Groq');
+      await panel.locator('#mtg-status', { hasText: 'Transcribed 3 part(s)' }).waitFor({ timeout: 60000 });
+      const texts = (await chunksOf(m.id)).map((c) => c.text);
+      assert.match(texts[0], /robotics club/);
+      assert.match(texts[1], /demo day/);
+      assert.match(texts[2], /slides/);
+      await panel.click('#view-meetings button:has-text("Delete meeting")');
+      await clickModalButton(panel, 'Delete meeting');
+      await panel.locator('#view-meetings h3', { hasText: 'Your meetings' }).waitFor();
+    });
+  }
+
   // ------------------------------------------------------------------ recording
   const fixture = await context.newPage();
   await fixture.goto(`${site.url}/meeting`);
@@ -205,9 +237,9 @@ export async function runMeetingSteps(env) {
     await panel.click('#view-meetings button:has-text("Start recording")');
     // Without a toolbar click on the tab, Chrome refuses tabCapture -> Satchel explains and offers the picker.
     await panel.locator('#view-meetings', { hasText: 'Chrome needs one more step' }).waitFor({ timeout: 10000 });
-    const recPromise = context.waitForEvent('page', (p) => p.url().includes('recorder.html'));
+    const oldRecorders = context.pages().filter((p) => p.url().includes('recorder.html'));
     await panel.click('#view-meetings button:has-text("Use the tab picker instead")');
-    const rec = await recPromise;
+    const rec = await waitForExtPage(context, 'recorder.html', { exclude: oldRecorders });
     await rec.waitForLoadState('domcontentloaded');
     await rec.click('#choose-btn');
     await rec.locator('#state-label', { hasText: 'Recording' }).waitFor({ timeout: 15000 });
@@ -308,9 +340,9 @@ export async function runMeetingSteps(env) {
     await panel.click('#view-meetings button:has-text("Start recording")');
     await panel.locator('#view-meetings button:has-text("Use the tab picker instead"), #toast.show').first().waitFor({ timeout: 10000 });
     if (await panel.locator('#toast.show').isVisible()) throw new Error(`Start showed: ${await panel.textContent('#toast')}`);
-    const recPromise = context.waitForEvent('page', (p) => p.url().includes('recorder.html'));
+    const oldRecorders = context.pages().filter((p) => p.url().includes('recorder.html'));
     await panel.click('#view-meetings button:has-text("Use the tab picker instead")');
-    const rec = await recPromise;
+    const rec = await waitForExtPage(context, 'recorder.html', { exclude: oldRecorders });
     await rec.waitForLoadState('domcontentloaded');
     await rec.click('#choose-btn');
     await rec.locator('#state-label', { hasText: 'Recording' }).waitFor({ timeout: 15000 });
@@ -328,9 +360,8 @@ export async function runMeetingSteps(env) {
     context = await launch();
     env.watchConsole?.(context);
     sw = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-    const pagePromise = context.waitForEvent('page', (p) => p.url().includes('sidepanel.html'));
     await sw.evaluate((url) => chrome.windows.create({ url, type: 'popup', width: 420, height: 900 }), `chrome-extension://${extId}/sidepanel/sidepanel.html`);
-    panel = await pagePromise;
+    panel = await waitForExtPage(context, 'sidepanel.html');
     await panel.waitForLoadState('domcontentloaded');
     await showMeetings();
     const deadline = Date.now() + 40000;

@@ -1,9 +1,9 @@
 // "Ask" view: summarize the current page, answer questions grounded in it, compare selected tabs,
 // research across selected tabs, or chat without any page.
-import { h, clear, toast, confirmSendToAI, renderGroundedAnswer, renderRichText, saveMemoryDialog, spinner } from '../../lib/ui.js';
+import { h, clear, toast, errorBox, confirmSendToAI, renderGroundedAnswer, renderRichText, saveMemoryDialog, spinner } from '../../lib/ui.js';
 import { readTab, requestSiteAccess, unreadableReason } from '../../lib/browser.js';
 import { runGroundedTask, describeOutgoing, buildSources } from '../../lib/research.js';
-import { chat, friendlyError } from '../../lib/ai.js';
+import { chat } from '../../lib/ai.js';
 import { getSettings } from '../../lib/settings.js';
 import { addMemory, memoriesForAI, getConversation, appendConversation, clearConversation } from '../../lib/memory.js';
 import { generalChatSystemPrompt } from '../../lib/prompts.js';
@@ -175,7 +175,7 @@ async function runGrounded(task, question, tabs, accessPromise) {
   setBusy(true);
   els.input.value = '';
   const label = { summarize: 'Summarize', qa: 'Question', compare: 'Compare', research: 'Research' }[task];
-  addMessage('user', question, `${label} · ${tabs.length === 1 ? tabs[0].title || tabs[0].url : `${tabs.length} tabs`}`);
+  const userMsg = addMessage('user', question, `${label} · ${tabs.length === 1 ? tabs[0].title || tabs[0].url : `${tabs.length} tabs`}`);
   const pending = addMessage('assistant', spinner('Reading the page…'));
   try {
     const granted = await accessPromise.catch(() => false);
@@ -202,7 +202,9 @@ async function runGrounded(task, question, tabs, accessPromise) {
     await appendConversation({ role: 'user', text: question, task });
     await appendConversation({ role: 'assistant', text: result.answer, result });
   } catch (err) {
-    pending.replaceWith(h('div', { class: 'msg error' }, friendlyError(err)));
+    const box = h('div', { class: 'msg error' });
+    box.append(errorBox(err, null, { retry: () => { if (state.busy) return; box.remove(); userMsg?.remove(); runGrounded(task, question, tabs, accessPromise); } }));
+    pending.replaceWith(box);
   } finally {
     setBusy(false);
   }
@@ -215,7 +217,7 @@ function renderResultMessage(result, question) {
 async function runChat(text) {
   setBusy(true);
   els.input.value = '';
-  addMessage('user', text);
+  const userMsg = addMessage('user', text);
   const pending = addMessage('assistant', spinner('Thinking…'));
   try {
     const settings = await getSettings();
@@ -235,7 +237,9 @@ async function runChat(text) {
     await appendConversation({ role: 'user', text });
     await appendConversation({ role: 'assistant', text: r.content });
   } catch (err) {
-    pending.replaceWith(h('div', { class: 'msg error' }, friendlyError(err)));
+    const box = h('div', { class: 'msg error' });
+    box.append(errorBox(err, null, { retry: () => { if (state.busy) return; box.remove(); userMsg?.remove(); runChat(text); } }));
+    pending.replaceWith(box);
   } finally {
     setBusy(false);
   }

@@ -185,3 +185,48 @@ test('transcription rate limits come back with retry-after', { skip: !hasPwsh },
   assert.equal(r.status, 429);
   assert.equal(String(r.retryAfter), '720');
 });
+
+
+// ---------------- OpenAI provider (simulated) ----------------
+const FAKE_OPENAI_KEY = 'sk-test-fake-openai-key-456';
+
+test('OpenAI requests go to the OpenAI endpoint with the OpenAI key, never to Groq', { skip: !hasPwsh }, async () => {
+  const openai = await startFakeGroq({ key: FAKE_OPENAI_KEY });
+  try {
+    const env = { SATCHEL_OPENAI_BASE_URL: openai.url };
+    const none = await callHost({ type: 'models', provider: 'openai' }, { env });
+    assert.equal(none.error.code, 'no_key');
+    assert.match(none.error.message, /Set OpenAI key/);
+    const cmd = `. '${path.join(root, 'companion/windows/SatchelCommon.ps1')}'; Save-ProviderKey 'openai' '${FAKE_OPENAI_KEY}'`;
+    assert.equal(spawnSync('pwsh', ['-NoProfile', '-Command', cmd], { env: { ...process.env, SATCHEL_DATA_DIR: dataDir } }).status, 0);
+    const ping = await callHost({ type: 'ping' }, { env });
+    assert.deepEqual(ping.keys, { groq: true, openai: true });
+    assert.equal(JSON.stringify(ping).includes(FAKE_OPENAI_KEY), false);
+    const groqBefore = fake.log.length;
+    const chatReply = await callHost({ type: 'chat', provider: 'openai', bodyJson: JSON.stringify({ model: 'gpt-4.1-mini', messages: [{ role: 'user', content: 'hi' }], max_completion_tokens: 50 }) }, { env });
+    assert.equal(chatReply.status, 200);
+    assert.equal(openai.log.at(-1).auth, `Bearer ${FAKE_OPENAI_KEY}`);
+    assert.equal(fake.log.length, groqBefore, 'Groq server was not contacted');
+    const t = await callHost({ type: 'transcribe', provider: 'openai', model: 'whisper-large-v3', responseFormat: 'json', mime: 'audio/wav', fileName: 'p.wav', audioBase64: toneWav(2, 300).toString('base64') }, { env });
+    assert.equal(t.status, 200);
+    const sent = openai.log.transcriptions.at(-1);
+    assert.equal(sent.response_format, 'json');
+    assert.equal(sent.granularity, undefined, 'no timestamp granularity for plain json');
+    assert.equal((await callHost({ type: 'models', provider: 'anthropic' }, { env })).error.code, 'bad_request');
+    assert.equal((await callHost({ type: 'transcribe', provider: 'openai', responseFormat: 'srt', model: 'whisper-1', mime: 'audio/wav', fileName: 'p.wav', audioBase64: 'AAAA' }, { env })).error.code, 'bad_request');
+  } finally {
+    await openai.close();
+  }
+});
+
+test('OpenAI "no credit" and rate-limit responses are passed through for the extension to explain', { skip: !hasPwsh }, async () => {
+  const openai = await startFakeGroq({ key: FAKE_OPENAI_KEY });
+  try {
+    openai.control.rateLimitNextTranscriptions = 1;
+    const r = await callHost({ type: 'transcribe', provider: 'openai', model: 'whisper-large-v3', mime: 'audio/wav', fileName: 'p.wav', audioBase64: toneWav(1, 300).toString('base64') }, { env: { SATCHEL_OPENAI_BASE_URL: openai.url } });
+    assert.equal(r.status, 429);
+    assert.equal(String(r.retryAfter), '720');
+  } finally {
+    await openai.close();
+  }
+});

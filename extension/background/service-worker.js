@@ -6,6 +6,7 @@
 // the user clicks something.
 import { fetchPageInBackground } from '../lib/browser.js';
 import { recoverInterrupted } from '../lib/meetings.js';
+import { runTranscriptionJob } from '../lib/transcription-job.js';
 
 const RECORD_MENU_ID = 'satchel-record-tab';
 
@@ -55,6 +56,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 const handlers = {
+  // Meeting transcription the user approved in the side panel; runs here so closing the panel doesn't stop it.
+  async 'meeting.transcribe'({ meetingId, onlyFailed }) {
+    return runTranscriptionJob(String(meetingId), { onlyFailed: !!onlyFailed });
+  },
   // Loads each school page the user chose in a background tab (using their signed-in session),
   // extracts assignments, and closes the tab again.
   async 'school.fetchPages'({ urls }) {

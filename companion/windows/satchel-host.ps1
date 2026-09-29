@@ -53,17 +53,26 @@ function Get-ErrorReply([string]$Code, [string]$Message) {
     return [ordered]@{ ok = $false; error = [ordered]@{ code = $Code; message = $Message } }
 }
 
+function Get-NoKeyReply([string]$Provider) {
+    $label = Get-SatchelProviderLabel $Provider
+    return (Get-ErrorReply 'no_key' ("No $label API key is stored yet. Open the Start menu and run 'Satchel - Set $label key' (or run set-key.cmd in the companion folder)."))
+}
+
 function Invoke-SatchelRequest($Request) {
     $type = [string]$Request.type
+    $provider = 'groq'
+    if ($Request.provider) { $provider = [string]$Request.provider }
+    if (-not (Test-SatchelProvider $provider)) { return (Get-ErrorReply 'bad_request' 'Unknown AI provider.') }
     switch ($type) {
         'ping' {
-            $hasKey = Test-Path -LiteralPath (Get-SatchelKeyPath)
-            return [ordered]@{ ok = $true; version = $script:SatchelVersion; hasKey = $hasKey; keyStore = (Get-SatchelKeyStoreKind) }
+            $keys = [ordered]@{}
+            foreach ($p in $script:SatchelProviders) { $keys[$p] = (Test-Path -LiteralPath (Get-SatchelKeyPath $p)) }
+            return [ordered]@{ ok = $true; version = $script:SatchelVersion; hasKey = $keys['groq']; keys = $keys; keyStore = (Get-SatchelKeyStoreKind) }
         }
         'models' {
-            $key = Get-GroqKey
-            if (-not $key) { return (Get-ErrorReply 'no_key' 'No Groq API key is stored yet. Run "Set Groq key" from the Satchel companion folder.') }
-            return (Invoke-GroqRequest -Method 'GET' -Path '/models' -Key $key -TimeoutSec 20)
+            $key = Get-ProviderKey $provider
+            if (-not $key) { return (Get-NoKeyReply $provider) }
+            return (Invoke-GroqRequest -Provider $provider -Method 'GET' -Path '/models' -Key $key -TimeoutSec 20)
         }
         'chat' {
             $body = [string]$Request.bodyJson
@@ -71,11 +80,11 @@ function Invoke-SatchelRequest($Request) {
             # Validate that the body is JSON with a model and messages; the key is never part of it.
             try { $parsed = ConvertFrom-Json -InputObject $body } catch { return (Get-ErrorReply 'bad_request' 'Request body is not valid JSON.') }
             if (-not $parsed.model -or -not $parsed.messages) { return (Get-ErrorReply 'bad_request' 'Request must include model and messages.') }
-            $key = Get-GroqKey
-            if (-not $key) { return (Get-ErrorReply 'no_key' 'No Groq API key is stored yet. Run "Set Groq key" from the Satchel companion folder.') }
+            $key = Get-ProviderKey $provider
+            if (-not $key) { return (Get-NoKeyReply $provider) }
             $timeout = 60
             if ($Request.timeoutSec) { $timeout = [int]$Request.timeoutSec }
-            return (Invoke-GroqRequest -Method 'POST' -Path '/chat/completions' -Body $body -Key $key -TimeoutSec $timeout)
+            return (Invoke-GroqRequest -Provider $provider -Method 'POST' -Path '/chat/completions' -Body $body -Key $key -TimeoutSec $timeout)
         }
         'transcribe' {
             # One audio chunk -> Groq speech-to-text. Only whitelisted form fields are forwarded.
@@ -88,16 +97,20 @@ function Invoke-SatchelRequest($Request) {
             try { $audio = [Convert]::FromBase64String([string]$Request.audioBase64) } catch { return (Get-ErrorReply 'bad_request' 'Audio data is not valid base64.') }
             if ($audio.Length -eq 0) { return (Get-ErrorReply 'bad_request' 'The audio chunk is empty.') }
             if ($audio.Length -gt $MaxAudioBytes) { return (Get-ErrorReply 'too_large' 'This audio chunk is larger than 25 MB.') }
-            $key = Get-GroqKey
-            if (-not $key) { return (Get-ErrorReply 'no_key' 'No Groq API key is stored yet. Run "Set Groq key" from the Satchel companion folder.') }
+            $format = 'verbose_json'
+            if ($Request.responseFormat) { $format = [string]$Request.responseFormat }
+            if ($format -ne 'verbose_json' -and $format -ne 'json') { return (Get-ErrorReply 'bad_request' 'Invalid response format.') }
+            $key = Get-ProviderKey $provider
+            if (-not $key) { return (Get-NoKeyReply $provider) }
             Initialize-SatchelHttp
             $form = New-Object System.Net.Http.MultipartFormDataContent
             $fileContent = New-Object System.Net.Http.ByteArrayContent(,$audio)
             $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($mime)
             $form.Add($fileContent, 'file', $fileName)
             $form.Add((New-Object System.Net.Http.StringContent($model)), 'model')
-            $form.Add((New-Object System.Net.Http.StringContent('verbose_json')), 'response_format')
-            $form.Add((New-Object System.Net.Http.StringContent('segment')), 'timestamp_granularities[]')
+            $form.Add((New-Object System.Net.Http.StringContent($format)), 'response_format')
+            # Segment timestamps are only available with verbose_json (Whisper models).
+            if ($format -eq 'verbose_json') { $form.Add((New-Object System.Net.Http.StringContent('segment')), 'timestamp_granularities[]') }
             $form.Add((New-Object System.Net.Http.StringContent('0')), 'temperature')
             $lang = [string]$Request.language
             if ($lang -match '^[a-z]{2}$') { $form.Add((New-Object System.Net.Http.StringContent($lang)), 'language') }
@@ -108,7 +121,7 @@ function Invoke-SatchelRequest($Request) {
             }
             $timeout = 120
             if ($Request.timeoutSec) { $timeout = [int]$Request.timeoutSec }
-            return (Invoke-GroqRequest -Method 'POST' -Path '/audio/transcriptions' -Content $form -Key $key -TimeoutSec $timeout)
+            return (Invoke-GroqRequest -Provider $provider -Method 'POST' -Path '/audio/transcriptions' -Content $form -Key $key -TimeoutSec $timeout)
         }
         default { return (Get-ErrorReply 'unsupported' "Unsupported request type.") }
     }

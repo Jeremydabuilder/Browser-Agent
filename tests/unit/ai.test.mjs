@@ -33,7 +33,8 @@ test('chat sends only the request body; never includes a key', async () => {
   const r = await chat({ messages: [{ role: 'user', content: 'hi' }] });
   assert.equal(r.content, 'hello');
   const req = calls.find((c) => c.type === 'chat');
-  assert.deepEqual(Object.keys(req).sort(), ['bodyJson', 'timeoutSec', 'type']);
+  assert.deepEqual(Object.keys(req).sort(), ['bodyJson', 'provider', 'timeoutSec', 'type']);
+  assert.equal(req.provider, 'groq', 'Groq is the default provider');
   assert.equal(JSON.parse(req.bodyJson).model, 'llama-3.3-70b-versatile');
 });
 
@@ -121,16 +122,17 @@ test('transcribe: auto picks a Whisper model from the live list and sends no key
   });
   assert.deepEqual((await listTranscriptionModels()).map((m) => m.id), ['whisper-large-v3', 'whisper-large-v3-turbo']);
   const r = await transcribe({ audioBase64: 'AAAA', mime: 'audio/wav', fileName: 'part-1.wav' });
-  assert.deepEqual(r, { text: 'Hello there.', segments: [{ start: 0, end: 2, text: 'Hello' }, { start: 2, end: 4, text: 'there.' }], duration: 4.2, model: 'whisper-large-v3-turbo' });
+  assert.deepEqual(r, { text: 'Hello there.', segments: [{ start: 0, end: 2, text: 'Hello' }, { start: 2, end: 4, text: 'there.' }], duration: 4.2, model: 'whisper-large-v3-turbo', provider: 'groq' });
   const req = calls.find((c) => c.type === 'transcribe');
-  assert.deepEqual(Object.keys(req).sort(), ['audioBase64', 'fileName', 'language', 'mime', 'model', 'prompt', 'timeoutSec', 'type']);
+  assert.deepEqual(Object.keys(req).sort(), ['audioBase64', 'fileName', 'language', 'mime', 'model', 'prompt', 'provider', 'responseFormat', 'timeoutSec', 'type']);
+  assert.equal(req.responseFormat, 'verbose_json');
 });
 
 test('transcribe: rate limit and removed models are handled', async () => {
   const { transcribe } = await import('../../extension/lib/ai.js');
   const body = JSON.stringify({ data: [{ id: 'whisper-large-v3', active: true }, { id: 'whisper-large-v3-turbo', active: true }] });
   companion((m) => (m.type === 'models' ? { ok: true, status: 200, body } : { ok: true, status: 429, retryAfter: '720', body: '{"error":{"message":"ASH limit"}}' }));
-  await assert.rejects(transcribe({ audioBase64: 'AA', mime: 'audio/wav', fileName: 'a.wav' }), (e) => e.code === 'rate_limited' && e.retryAfter === 720 && /Progress is saved/.test(e.message));
+  await assert.rejects(transcribe({ audioBase64: 'AA', mime: 'audio/wav', fileName: 'a.wav' }), (e) => e.code === 'rate_limited' && e.retryAfter === 720 && /Finished parts are saved/.test(e.message));
   setStorageBackend(createMemoryBackend());
   companion((m) => {
     if (m.type === 'models') return { ok: true, status: 200, body };

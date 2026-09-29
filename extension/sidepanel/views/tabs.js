@@ -1,11 +1,11 @@
 // "Tabs" view: list, search, group, save, reopen, and close tabs.
 // Every close goes through a confirmation screen listing the exact tabs. Pinned tabs are never
 // included unless the user ticks them personally on that screen.
-import { h, clear, link, toast, modal, confirmSendToAI, spinner } from '../../lib/ui.js';
+import { h, clear, link, toast, modal, confirmSendToAI, spinner, errorBox } from '../../lib/ui.js';
 import { parseTabCommand, searchTabs, findDuplicateTabs, tabsForPrompt } from '../../lib/tabs.js';
 import { validateAction } from '../../lib/actions.js';
 import { executeTabAction, listSavedGroups, deleteSavedGroup, renameSavedGroup } from '../../lib/tab-exec.js';
-import { chat, friendlyError } from '../../lib/ai.js';
+import { chat } from '../../lib/ai.js';
 import { tabCommandSystemPrompt, escapeForTag } from '../../lib/prompts.js';
 import { hostnameOf } from '../../lib/util.js';
 
@@ -260,7 +260,7 @@ async function runCommand(text) {
     // The AI's proposal is only a suggestion: it is validated and then confirmed by the user.
     await proposeAndConfirm(proposal, { explicit: selected, fromAI: true, explanation: `Satchel understood: ${String(r.data?.explanation || '').slice(0, 200)}` });
   } catch (err) {
-    setStatus(h('p', { class: 'error' }, friendlyError(err)));
+    setStatus(errorBox(err));
   } finally {
     state.busy = false;
   }

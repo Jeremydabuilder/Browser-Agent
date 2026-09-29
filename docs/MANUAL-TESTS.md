@@ -1,12 +1,14 @@
 # Manual test plan (Chrome and Edge on Windows)
 
-Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick each item. Automated coverage (`npm run test:all`) exercises most of these flows in Chromium, but real Groq, real Google sign-in, the Windows companion install, and Edge can only be verified by hand.
+Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick each item. Automated coverage (`npm run test:all`) exercises most of these flows in Chromium and Linux Edge, but real Groq, real OpenAI, real Google sign-in, the Windows companion install, and Chrome/Edge on Windows can only be verified by hand.
 
 ## A. Install
 - [ ] A1. Load `extension/` unpacked. The card shows ID `enhkjfoecodefiigkephlalmoebbfgmb` and no errors (click **Errors** if shown).
 - [ ] A2. Run `companion\windows\install.cmd`: registration messages for Chrome **and** Edge, key verified and saved.
 - [ ] A3. `status.cmd` shows `[ok]` for both registrations and the key, and lists Groq models.
-- [ ] A4. Restart the browser. Click the toolbar icon: the side panel opens and the header shows **AI: ready**. **Alt+Shift+S** also opens it.
+- [ ] A3b. Start menu → **Satchel** has four shortcuts (Set Groq key, Set OpenAI key, Check companion, Uninstall companion), and each opens a working window.
+- [ ] A4. Restart the browser. Click the toolbar icon: the side panel opens and the header shows **AI: ready · Groq**. **Alt+Shift+S** also opens it. Close and reopen the panel: the pill appears immediately (cached for 10 minutes) instead of “checking…”.
+- [ ] A4b. **Before** installing the companion (or after uninstalling it), open the panel: a setup card lists the exact install steps with **Check again**. After installing and restarting, **Check again** turns the pill green and the card disappears.
 - [ ] A5. Settings → **Test connection** says Connected and fills the model list. Pick a model, reload Settings, and the choice is kept.
 - [ ] A6. Search `%LOCALAPPDATA%\Satchel` and the extension folder for your key text: it must not appear in plain text anywhere.
 
@@ -65,7 +67,18 @@ Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick ea
 - [ ] G1. Run `uninstall.cmd` (keep the key) and restart the browser. The header says **AI: not set up**, and Ask shows “companion is not installed…”. School manual entry, Tabs, and Memory still work. Reinstall afterwards.
 - [ ] G2. Replace the key with an invalid one (`set-key.cmd`, answer “y” to save anyway). You get “Groq rejected the stored API key”.
 - [ ] G3. Settings → pick a large model and send many requests quickly. A rate-limit message appears with a wait time, or Satchel waits and retries automatically.
-- [ ] G4. Disconnect from the internet → Ask: “Could not reach Groq”.
+- [ ] G4. Disconnect from the internet → Ask: “Could not reach Groq”, with a **Try again** button that works after reconnecting.
+- [ ] G5. Every AI error in Ask, Tabs, School, Email and Meetings shows a next step (a Settings button or numbered steps), not just a message. A rate-limit error shows a **Try again in Ns** countdown.
+
+## I. OpenAI (optional provider, real OpenAI key with billing)
+- [ ] I1. Start menu → **Satchel - Set OpenAI key**, paste a real key: “verified and saved”. `%LOCALAPPDATA%\Satchel\openai-key.dat` exists and does not contain the key in plain text. Settings → Test connection shows **key stored** for both providers.
+- [ ] I2. Settings → AI providers: set chat to **OpenAI**. **Will use** shows OpenAI, a model from your account, and its price. Ask a page question: the consent says **Send to OpenAI** with an estimated cost; the answer arrives. The OpenAI usage page shows the request.
+- [ ] I3. Set transcription to **OpenAI** (Auto, then `whisper-1`, then `gpt-4o-mini-transcribe`). Transcribe a 10-minute meeting: the consent shows about 10 min × price. With `whisper-1` lines have timestamps; with `gpt-4o-mini-transcribe` lines are timed per part, as Settings said.
+- [ ] I4. Set the spending guard to **$0.01** and try a 30-minute transcription: **Send** is disabled and the guard is explained. Set it to $0: every OpenAI request stops before sending with “spending guard” and a Settings button. Groq tasks keep working.
+- [ ] I5. Compare Settings → Costs “used this month” with the OpenAI usage page after a few requests; note the difference (it's an estimate).
+- [ ] I6. Store an invalid OpenAI key (answer “y” to save anyway): “OpenAI rejected the stored API key” with a button to key setup. With an account without credit: “no credit or quota left”, and Satchel does not retry.
+- [ ] I7. Start a long transcription and close the side panel; reopen it a few minutes later: the job kept running and shows its result.
+- [ ] I8. Search the browser profile folder and `%LOCALAPPDATA%\Satchel\companion-errors.log` for the OpenAI key text: it must not appear.
 
 ## H. Meetings (Chrome and Edge, real Groq key)
 - [ ] H1. Join a test meeting in the browser (e.g. a Google Meet with a second device, or a YouTube video standing in for a meeting). Click the **Satchel icon while that tab is showing** → Meetings. The record card names the tab. **Start is refused** until you tick the consent box.
@@ -76,7 +89,7 @@ Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick ea
 - [ ] H6. While recording, close the meeting tab: recording stops, and the meeting shows it stopped because the tab closed. The audio is kept.
 - [ ] H7. While recording, close the recorder window: the meeting shows **interrupted – audio kept**, and the audio plays up to about the moment you closed it.
 - [ ] H8. While recording, end the browser in Task Manager, then reopen it → Meetings: the meeting is **interrupted – audio kept** with its audio.
-- [ ] H9. **Transcribe with Groq…**: the consent shows minutes and MB. Cancel sends nothing. Send: parts are transcribed in order, and the transcript timestamps match the recording. Check `%LOCALAPPDATA%\Satchel\companion-errors.log` contains no transcript text or key.
+- [ ] H9. **Transcribe with Groq…**: the consent shows minutes, MB, model and estimated cost. Cancel sends nothing. Send: parts are transcribed in order, and the transcript timestamps match the recording. Check `%LOCALAPPDATA%\Satchel\companion-errors.log` contains no transcript text or key.
 - [ ] H10. Turn Wi-Fi off halfway through transcription: the failed parts show errors, and finished parts are kept. Turn Wi-Fi on → **Retry failed parts** sends only those.
 - [ ] H11. Correct a name in the transcript → generate notes (a separate consent). The notes use the corrected name. Every decision or action item has a ⏱ link that jumps to the right line. Owners and dates appear only where people said them, with ⚠ Review where uncertain.
 - [ ] H12. Edit a note field, reload the side panel: the edit is kept. Export notes and everything as .md and .txt and open them: the Markdown timestamps link to transcript lines.

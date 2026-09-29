@@ -21,7 +21,8 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 1. Download this repository (**Code → Download ZIP**), right-click the ZIP → **Properties → Unblock**, then extract it, for example to `Documents\Satchel`.
 2. **Chrome:** open `chrome://extensions`. **Edge:** open `edge://extensions`. Turn on **Developer mode**, click **Load unpacked**, and select the `extension` folder.
 3. Double-click `companion\windows\install.cmd` and paste your Groq API key from <https://console.groq.com/keys>.
-4. Restart the browser, click the Satchel toolbar icon (or press **Alt+Shift+S**), and check that the header says **AI: ready**.
+4. Restart the browser, click the Satchel toolbar icon (or press **Alt+Shift+S**), and check that the header says **AI: ready · Groq**. If anything is missing, a setup card at the top of the panel lists the exact steps.
+5. Optional: add an OpenAI key (Start menu → **Satchel - Set OpenAI key**) and choose OpenAI for chat/notes or transcription in Settings. Satchel shows an estimated cost before each OpenAI request and has a local monthly spending guard (an app-side estimate, not an OpenAI billing limit).
 
 ## Verification status
 
@@ -29,20 +30,22 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 
 | Part | Status |
 |---|---|
-| Extension UI and logic in Chromium (Ask, School, Tabs, Memory, Settings) | **Tested automatically** (Linux, Playwright Chromium): unit tests plus a 36-step browser test on the real extension, run from both the source folder and the release ZIP |
+| Extension UI and logic (Ask, School, Tabs, Memory, Settings, setup card, actionable errors) | **Tested automatically** on Linux: unit tests plus a 39-step browser test on the real extension in Playwright Chromium (from the source folder and the release ZIP) and in **Microsoft Edge 154 for Linux** |
 | Meetings: tab recording, one-click (`chrome.tabCapture` after clicking the Satchel icon on the tab) | **Untested.** Automation can't click the toolbar icon. Tests only confirm that Satchel detects Chrome's refusal and offers the picker. The playback that keeps the tab audible in this mode is untested |
 | Meetings: tab recording through the browser's tab picker | **Tested on Linux Chromium, simulated picker choice:** headed Chromium under Xvfb records a local test page playing a 440 Hz tone. The saved chunks decode, and their dominant frequency is ~440 Hz. Tests cover 5-minute chunk rotation (10 s in tests), the timer, the REC badge and banner, the page still playing, and stopping when the tab closes. **Not** verified with a real meeting site, on Windows, or in Edge |
 | Meetings: microphone | **Simulated** (Chromium's fake microphone). A real microphone, the permission prompt, and the denied-permission path in a real browser are untested |
 | Meetings: interruption and recovery | **Tested on Linux Chromium:** closing the recorder window, and SIGKILL of the browser followed by a relaunch, keep the saved audio (at most ~2 s lost) as an "interrupted" meeting with a playable partial chunk |
-| Meetings: import | **WAV tested on Linux Chromium.** **Zoom M4A/MP4 untested:** open-source Chromium has no AAC decoder; branded Chrome and Edge do. Live capture of the Zoom desktop app is not supported |
-| Meetings: transcription | **Simulated Groq:** the real companion uploads each part as multipart, a failed part is retried alone, parts keep their order, and timestamps are shifted to the meeting timeline. Real Whisper output and Groq audio rate limits are untested |
+| Meetings: import | **WAV tested on Linux Chromium and Edge.** **Zoom-style M4A/MP4 (AAC) tested in Edge 154 for Linux** with generated files (`audio_only.m4a`, `zoom_0.mp4`): split into parts at the right times and transcribed in order. **No real Zoom recording yet**, and not on Windows. Open-source Chromium has no AAC decoder, so that step is skipped there. Live capture of the Zoom desktop app is not supported |
+| Meetings: transcription | **Simulated Groq (browser test) and simulated OpenAI (unit and companion tests):** the real companion uploads each part as multipart, a failed part is retried alone, parts keep their order, timestamps are shifted to the meeting timeline, and the job keeps running in the service worker when the side panel closes. Real Whisper / OpenAI output and real rate limits are untested |
 | Meetings: transcript correction, notes, timestamp links | **Simulated Groq:** the correction UI and the grounding rules are tested (an invented decision is dropped; owners and dates only when stated); the note text came from a fake AI |
 | Meetings: export, search, rename, separate deletion, no memory writes | **Tested on Linux Chromium** |
 | Companion protocol (`satchel-host.ps1`), including `transcribe` | **Tested** under PowerShell 7 on Linux through Chromium native messaging, with a simulated Groq service (a 10 MB chunk succeeds, 26 MB is rejected) |
 | API key never stored in the browser | **Tested:** after the browser test, every file in the Chromium profile and the companion's log folder is scanned for the key |
-| Windows installer, registry registration, `.bat` launcher, DPAPI, Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
-| Microsoft Edge | **Not tested** |
-| A real Groq key and API | **Not tested**; Groq's API was unreachable from the build environment |
+| Windows installer, registry registration, Start menu shortcuts, `.bat` launcher, DPAPI (both keys), Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
+| Microsoft Edge | **Tested on Linux** (Edge 154, all 39 browser steps including real tab-audio capture). Edge and Chrome on Windows are **not tested** |
+| OpenAI as an optional provider (chat/notes and transcription, separately) | **Simulated only:** unit tests cover model filtering, `whisper-1` vs `gpt-4o-mini-transcribe` formats, unsupported-parameter retries, quota (`insufficient_quota`), bad or missing key, and cost recording; companion tests confirm OpenAI requests go to the OpenAI endpoint with the OpenAI key and never reach Groq. **No real OpenAI request has been made** |
+| Cost estimates and OpenAI spending guard | **Tested with simulated responses** (the guard blocks before a request; Groq is never blocked; $0 blocks all OpenAI requests). It's an app-side estimate from an editable price table, not billing data; real charges are **untested** |
+| A real Groq key and API | **Not tested**; no real Groq request has been made from the build environment |
 | Google sign-in for Gmail read, Gmail send, and Classroom | **Not tested with a real Google account.** The UI and API handling are tested only against simulated Google responses. Sign-in uses Google's implicit flow, which Google discourages; see [docs/GOOGLE-SETUP.md](docs/GOOGLE-SETUP.md) |
 
 ## Repository layout

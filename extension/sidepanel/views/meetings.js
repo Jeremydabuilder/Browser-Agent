@@ -1,14 +1,15 @@
 // "Meetings" view: record a meeting tab or import a recording, transcribe it with Groq (only after you
 // approve), review/correct the transcript, and generate editable, grounded notes.
-import { h, clear, toast, modal, confirmDialog, spinner } from '../../lib/ui.js';
+import { h, clear, toast, modal, confirmDialog, spinner, errorBox, costSummary } from '../../lib/ui.js';
 import * as store from '../../lib/meeting-store.js';
 import { createMeeting, renameMeeting, recoverInterrupted, searchMeetings, meetingStats } from '../../lib/meetings.js';
-import { runTranscription, editSegment, transcriptStats } from '../../lib/transcription.js';
+import { editSegment, transcriptStats } from '../../lib/transcription.js';
 import { generateNotes } from '../../lib/meeting-notes.js';
 import { describeStopReason, formatClock } from '../../lib/meeting-capture.js';
 import { IMPORT_FORMATS, IMPORT_LIMITS, checkImportFile, decodeAndSplit, formatBytes } from '../../lib/audio-chunks.js';
 import { notesToMarkdown, notesToText, transcriptToMarkdown, transcriptToText, meetingToMarkdown, meetingToText, safeFileName } from '../../lib/meeting-export.js';
-import { transcribe, toBase64, chat, friendlyError } from '../../lib/ai.js';
+import { chat, providerLabel } from '../../lib/ai.js';
+import { getJob, isJobActive } from '../../lib/transcription-job.js';
 import { getSettings } from '../../lib/settings.js';
 import { getItem } from '../../lib/storage.js';
 import { unreadableReason, getTargetTab } from '../../lib/browser.js';
@@ -32,6 +33,9 @@ export function init(container, appRef) {
     if (area === 'session' && changes.activeRecording && !changes.activeRecording.newValue && !root.hidden && !state.busy) {
       setTimeout(() => { if (state.detailId) render(); else refreshList(); }, 500);
     }
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'session' && changes.transcriptionJob) onJobChange(changes.transcriptionJob.newValue);
   });
   setInterval(tickBanner, 1000);
 }
@@ -366,11 +370,15 @@ async function renderDetail(id, out) {
       player,
       c.error ? h('div', { class: 'error small' }, c.error) : null));
   }
-  const hasPending = stats.chunks.some((c) => c.status !== 'done' && c.hasAudio);
-  const hasFailed = stats.chunks.some((c) => c.status === 'failed' && c.hasAudio);
+  const job = await getJob();
+  const running = isJobActive(job) && job.meetingId === id;
+  const sttLabel = providerLabel((await getSettings()).transcriptionProvider);
+  const hasPending = !running && stats.chunks.some((c) => c.status !== 'done' && c.hasAudio);
+  const hasFailed = !running && stats.chunks.some((c) => c.status === 'failed' && c.hasAudio);
   audioCard.append(stats.chunks.length ? partList : h('p', { class: 'muted small' }, 'No audio parts were saved.'),
+    running ? spinner(`${job.message || 'Transcribing…'} (continues if you close the side panel)`) : null,
     h('div', { class: 'btn-row' },
-      hasPending ? h('button', { class: 'btn primary', onclick: () => transcribeMeeting(m, stats, { onlyFailed: false }) }, tstats.done ? 'Resume transcription…' : 'Transcribe with Groq…') : null,
+      hasPending ? h('button', { class: 'btn primary', onclick: () => transcribeMeeting(m, stats, { onlyFailed: false }) }, tstats.done ? 'Resume transcription…' : `Transcribe with ${sttLabel}…`) : null,
       hasFailed ? h('button', { class: 'btn', onclick: () => transcribeMeeting(m, stats, { onlyFailed: true }) }, 'Retry failed parts') : null,
       stats.hasAudio ? h('button', { class: 'btn small', onclick: async () => { if (await confirmDialog({ title: 'Delete raw audio?', message: 'The audio parts are deleted from this computer. The transcript and notes are kept. Parts that were not transcribed yet can no longer be transcribed.', confirmLabel: 'Delete audio', danger: true })) { await store.deleteAudio(id); render(); } } }, 'Delete raw audio') : null));
   out.append(audioCard);
@@ -423,59 +431,61 @@ function setStatus(node) {
   if (el) { clear(el); if (node) el.append(node); }
 }
 
+/** Cost/guard summary shown on approval screens. Returns {lines, blocked}. */
 async function transcribeMeeting(m, stats, { onlyFailed }) {
   if (state.busy) return;
+  if (isJobActive(await getJob())) { toast('A transcription is already running. Wait for it to finish.', 'error'); return; }
   const todo = stats.chunks.filter((c) => c.hasAudio && (onlyFailed ? c.status === 'failed' : c.status !== 'done'));
-  const minutes = Math.round(todo.reduce((n, c) => n + c.durationSec, 0) / 60);
+  const seconds = todo.reduce((n, c) => n + c.durationSec, 0);
+  const minutes = Math.round(seconds / 60);
   const bytes = todo.reduce((n, c) => n + store.dataSize(c.data), 0);
+  const cost = await costSummary({ task: 'transcription', seconds });
+  const label = providerLabel(cost.provider);
   const ok = await modal({
-    title: 'Send audio to Groq?',
+    title: `Send audio to ${label}?`,
     body: h('div', { class: 'consent' },
-      h('p', {}, `Satchel will send ${todo.length} audio part(s) (about ${minutes || '<1'} minute(s), ${formatBytes(bytes)}) of “${m.title}” to Groq for transcription, through the Satchel companion on your PC.`),
-      h('p', { class: 'small' }, 'Groq converts the speech to text. The audio stays stored on this computer; delete it any time with “Delete raw audio”.'),
-      h('p', { class: 'muted small' }, 'Parts are sent one at a time, in order. If one fails, the others are kept and you can retry just that part.')),
-    actions: [{ label: 'Cancel', value: false }, { label: 'Send audio to Groq', value: true, kind: 'primary' }],
+      h('p', {}, `Satchel will send ${todo.length} audio part(s) (about ${minutes || '<1'} minute(s), ${formatBytes(bytes)}) of “${m.title}” to ${label} for transcription, through the Satchel companion on your PC.`),
+      cost.lines,
+      h('p', { class: 'small' }, `${label} converts the speech to text. The audio stays stored on this computer; delete it any time with “Delete raw audio”.`),
+      h('p', { class: 'muted small' }, 'Parts are sent one at a time, in order, and it keeps going if you close the side panel. If one fails, the others are kept and you can retry just that part.')),
+    actions: [{ label: 'Cancel', value: false }, { label: `Send audio to ${label}`, value: true, kind: 'primary', disabled: cost.blocked }],
   });
   if (!ok) return;
   await store.updateMeeting(m.id, (cur) => ({ consent: { ...cur.consent, audioApprovedAt: new Date().toISOString() } }));
-  state.busy = true;
   setStatus(spinner('Starting transcription…'));
-  try {
-    const r = await runTranscription(m.id, {
-      transcribeChunk: async (chunk, previousText) => {
-        const mime = (chunk.mime || 'audio/webm').split(';')[0];
-        const ext = { 'audio/wav': 'wav', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3' }[mime] || 'webm';
-        return transcribe({ audioBase64: await toBase64(chunk.data), mime, fileName: `part-${chunk.index + 1}.${ext}`, prompt: previousText });
-      },
-      onProgress: (p) => setStatus(spinner(p.message)),
-    }, { onlyFailed });
-    state.busy = false;
-    await render();
-    const msg = r.fatal ? r.fatal
-      : r.stoppedForRateLimit ? `Groq's rate limit was reached after ${r.done} part(s). Your progress is saved; press “Resume transcription” later.`
-        : r.failed ? `${r.done} part(s) transcribed, ${r.failed} failed. Press “Retry failed parts” to try them again.`
-          : `Transcribed ${r.done} part(s). Please review the transcript before generating notes.`;
-    setStatus(h('p', { class: r.failed || r.fatal ? 'warn small' : 'notice' }, msg));
-  } catch (err) {
-    state.busy = false;
-    await render();
-    setStatus(h('p', { class: 'warn small' }, friendlyError(err)));
-  } finally {
-    state.busy = false;
-  }
+  // Runs in the background service worker so closing the side panel doesn't stop it.
+  chrome.runtime.sendMessage({ cmd: 'meeting.transcribe', meetingId: m.id, onlyFailed }).catch(() => {});
+}
+
+/** Shows background transcription progress and the final result for the open meeting. */
+async function onJobChange(job) {
+  if (!job || job.meetingId !== state.detailId || root.hidden) return;
+  if (job.state === 'running') { setStatus(spinner(job.message || 'Transcribing…')); return; }
+  await render();
+  if (job.state === 'error') { setStatus(errorBox(job.message, job.code)); return; }
+  const r = job.result || {};
+  const label = providerLabel((await getSettings()).transcriptionProvider);
+  const msg = r.fatal ? r.fatal
+    : r.stoppedForRateLimit ? `${label}'s rate limit was reached after ${r.done} part(s). Your progress is saved; press “Resume transcription” later.`
+      : r.failed ? `${r.done} part(s) transcribed, ${r.failed} failed. Press “Retry failed parts” to try them again.`
+        : `Transcribed ${r.done} part(s). Please review the transcript before generating notes.`;
+  setStatus(r.failed || r.fatal ? errorBox(msg, r.fatalCode) : h('p', { class: 'notice' }, msg));
 }
 
 async function makeNotes(m, segs, tstats) {
   if (state.busy) return;
   const words = segs.filter((s) => !s.gap).reduce((n, s) => n + s.text.split(/\s+/).length, 0);
+  const cost = await costSummary({ task: 'chat', words });
+  const label = providerLabel(cost.provider);
   const ok = await modal({
-    title: 'Send the transcript to Groq?',
+    title: `Send the transcript to ${label}?`,
     body: h('div', { class: 'consent' },
-      h('p', {}, `Satchel will send the corrected transcript of “${m.title}” (about ${words.toLocaleString()} words) to Groq to write notes.`),
+      h('p', {}, `Satchel will send the corrected transcript of “${m.title}” (about ${words.toLocaleString()} words) to ${label} to write notes.`),
+      cost.lines,
       tstats.complete ? null : h('p', { class: 'warn small' }, `${tstats.total - tstats.done} part(s) are missing from the transcript, so the notes will not cover them.`),
       h('p', { class: 'muted small' }, 'Notes are saved only with this meeting. Nothing is added to Satchel\'s memory.'),
       m.notes ? h('p', { class: 'warn small' }, 'Regenerating replaces the current notes, including your edits.') : null),
-    actions: [{ label: 'Cancel', value: false }, { label: 'Send transcript to Groq', value: true, kind: 'primary' }],
+    actions: [{ label: 'Cancel', value: false }, { label: `Send transcript to ${label}`, value: true, kind: 'primary', disabled: cost.blocked }],
   });
   if (!ok) return;
   state.busy = true;
@@ -497,7 +507,7 @@ async function makeNotes(m, segs, tstats) {
     root.querySelector('#notes-card')?.scrollIntoView({ block: 'start' });
   } catch (err) {
     state.busy = false;
-    setStatus(h('p', { class: 'warn small' }, friendlyError(err)));
+    setStatus(errorBox(err));
   } finally {
     state.busy = false;
   }

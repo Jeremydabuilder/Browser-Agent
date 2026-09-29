@@ -126,3 +126,8 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .note-item > input[type=checkbox] { width: auto; margin-top: 8px; }
 .ts-link { cursor: pointer; border: none; }
 .review { margin-top: 2px; padding: 3px 6px; }
+.setup-card { border-left: 4px solid var(--warn); margin-bottom: 10px; }
+.setup-card h3 { margin: 0 0 6px; font-size: 15px; }
+.setup-card ol { margin: 4px 0 6px; padding-left: 20px; }
+.setup-card li { margin-bottom: 3px; }
+

@@ -10,41 +10,68 @@
 <body>
   <div class="page">
     <div class="page-header"><img src="../icons/icon48.png" alt="" width="32" height="32"><h1>Satchel Settings</h1></div>
-    <nav class="toc"><a href="#companion">AI companion</a><a href="#model">Model</a><a href="#privacy">Privacy</a><a href="#school">School</a><a href="#google">Google</a><a href="#data">Your data</a><a href="../memory/memory.html">Memory →</a></nav>
+    <nav class="toc"><a href="#companion">AI companion</a><a href="#model">AI providers</a><a href="#spending">Costs</a><a href="#privacy">Privacy</a><a href="#school">School</a><a href="#google">Google</a><a href="#data">Your data</a><a href="../memory/memory.html">Memory →</a></nav>
 
     <section class="card" id="companion">
-      <h2>AI companion (Groq)</h2>
-      <p class="muted">Satchel uses your Groq account through a small companion program on your Windows PC. Your Groq API key is stored there, encrypted for your Windows account. It is never stored in the browser or the extension.</p>
+      <h2>AI companion</h2>
+      <p class="muted">Satchel uses your AI accounts through a small companion program on your Windows PC. Your API keys are stored there, encrypted for your Windows account. They are never stored in the browser, the extension, logs, or Git.</p>
       <div id="companion-status" class="status-line">Checking…</div>
+      <div id="key-status"></div>
       <div class="btn-row"><button class="btn primary" id="test-companion">Test connection</button></div>
-      <details>
-        <summary>How to install the companion (one time)</summary>
+      <details id="companion-help">
+        <summary>How to install the companion or change a key</summary>
         <ol class="steps">
           <li>Open the Satchel folder you downloaded, then <b>companion → windows</b>.</li>
           <li>Double-click <b>install.cmd</b>. If Windows shows “Windows protected your PC”, click <b>More info → Run anyway</b>.</li>
-          <li>When asked, paste your Groq API key (from <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>) and press Enter. It is checked with Groq and then saved encrypted.</li>
+          <li>Paste your Groq API key (from <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>) when asked. Optionally add an OpenAI key too.</li>
           <li><b>Restart the browser</b> (close every window), then press <b>Test connection</b> above.</li>
         </ol>
-        <p class="muted small">To change the key later, double-click <b>set-key.cmd</b>. To check everything, double-click <b>status.cmd</b>. Nothing needs to start at login: the browser starts the companion automatically when Satchel needs it.</p>
+        <p class="muted small">Later, use the Start menu: <b>Satchel - Set Groq key</b>, <b>Satchel - Set OpenAI key</b>, and <b>Satchel - Check companion</b>. Nothing needs to start at login: the browser starts the companion when Satchel needs it.</p>
       </details>
     </section>
 
     <section class="card" id="model">
-      <h2>AI model</h2>
-      <p class="muted">The list comes live from your Groq account, so retired models never appear. “Auto” picks a good available model and switches automatically if one is removed.</p>
-      <div class="row">
-        <div><label for="model-select">Model</label><select id="model-select"><option value="auto">Auto (recommended)</option></select></div>
-        <button class="btn" id="refresh-models">Refresh list</button>
+      <h2>AI providers and models</h2>
+      <p class="muted">Groq is the default. You can use OpenAI instead for either task (it needs an OpenAI key in the companion, and OpenAI charges per request). Model lists come live from each account, so retired models never appear. “Auto” picks a good available model.</p>
+      <div class="task-box">
+        <h3>Chat, page answers, school AI reading, email drafts and meeting notes</h3>
+        <div class="row">
+          <div><label for="chat-provider">Provider</label><select id="chat-provider"><option value="groq">Groq (default)</option><option value="openai">OpenAI</option></select></div>
+          <div><label for="model-select">Model</label><select id="model-select"><option value="auto">Auto (recommended)</option></select></div>
+        </div>
+        <div class="status-line" id="chat-uses">Checking…</div>
       </div>
+      <div class="task-box">
+        <h3>Meeting transcription</h3>
+        <div class="row">
+          <div><label for="stt-provider">Provider</label><select id="stt-provider"><option value="groq">Groq (default)</option><option value="openai">OpenAI</option></select></div>
+          <div><label for="stt-model">Speech-to-text model</label><select id="stt-model"><option value="auto">Auto (recommended)</option></select></div>
+          <div><label for="stt-lang">Meeting language</label><select id="stt-lang"><option value="">Detect automatically</option><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></div>
+        </div>
+        <div class="status-line" id="stt-uses">Checking…</div>
+      </div>
+      <div class="btn-row"><button class="btn" id="refresh-models">Refresh model lists</button></div>
       <div class="row">
         <div><label for="max-tokens">Max page text per request (tokens)</label><input type="number" id="max-tokens" min="1000" max="100000" step="500"></div>
         <div><label for="timeout">Request timeout (seconds)</label><input type="number" id="timeout" min="10" max="180" step="5"></div>
       </div>
-      <div class="row">
-        <div><label for="stt-model">Speech-to-text model (meeting transcription)</label><select id="stt-model"><option value="auto">Auto (recommended)</option></select></div>
-        <div><label for="stt-lang">Meeting language</label><select id="stt-lang"><option value="">Detect automatically</option><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></div>
-      </div>
       <p class="muted small">Groq's free tier limits tokens per minute. If you see rate-limit messages often, lower the max page text or choose a smaller model. Long pages are automatically split or trimmed to fit.</p>
+    </section>
+
+    <section class="card" id="spending">
+      <h2>Cost estimates and OpenAI spending guard</h2>
+      <p class="muted">Before a meeting is transcribed, Satchel estimates the cost from the recording length and asks you to approve it. For OpenAI, Satchel also keeps a running monthly estimate of its own requests and <b>stops before sending more OpenAI requests</b> once your guard amount would be passed.</p>
+      <p class="warn small">This guard is Satchel's own estimate on this computer. It is <b>not</b> an OpenAI billing limit, and real charges can differ (price changes, rounding, requests from other apps). For a hard limit, set a budget in your OpenAI account (platform.openai.com → Settings → Limits).</p>
+      <div class="row">
+        <div><label for="budget">OpenAI spending guard (US$ per month, estimated; 0 blocks all OpenAI requests)</label><input type="number" id="budget" min="0" max="10000" step="0.5"></div>
+        <div><label>Used this month (Satchel's estimate)</label><div class="status-line" id="spend-used">…</div></div>
+        <button class="btn" id="reset-spend">Reset this month's estimate</button>
+      </div>
+      <details>
+        <summary>Prices used for estimates (edit if a provider changes its prices)</summary>
+        <p class="muted small">Defaults were copied from the providers' public price pages in September 2026. Change a price here if it has changed; leave it as is otherwise. Groq's free tier may cost you nothing.</p>
+        <div id="price-editor"></div>
+      </details>
     </section>
 
     <section class="card" id="privacy">

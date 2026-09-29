@@ -20,7 +20,7 @@ Write-Host 'Your Groq key is stored encrypted for your Windows account only. It 
 Write-Step 'Copying companion files'
 $installDir = Join-Path (Get-SatchelDataDir) 'companion'
 if (-not (Test-Path -LiteralPath $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
-foreach ($f in @('SatchelCommon.ps1', 'satchel-host.ps1', 'satchel-host.bat')) {
+foreach ($f in @('SatchelCommon.ps1', 'satchel-host.ps1', 'satchel-host.bat', 'set-key.ps1', 'status.ps1', 'uninstall.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $installDir $f) -Force
 }
 # Files copied out of a downloaded ZIP carry a "downloaded from the internet" mark; clear it.
@@ -52,21 +52,48 @@ if ($lang -ne 'FullLanguage') {
     Write-Host 'The companion may be blocked. The rest of Satchel will still work, but AI features will not.' -ForegroundColor Yellow
 }
 
-Write-Step 'Groq API key'
-$existing = Test-Path -LiteralPath (Get-SatchelKeyPath)
+Write-Step 'Start menu shortcuts'
+# So you can change keys or check the companion later without finding this folder again.
+try {
+    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Satchel'
+    if (-not (Test-Path -LiteralPath $menu)) { New-Item -ItemType Directory -Path $menu -Force | Out-Null }
+    $shell = New-Object -ComObject WScript.Shell
+    $items = @(
+        @('Satchel - Set Groq key', 'set-key.ps1', '-Provider groq'),
+        @('Satchel - Set OpenAI key', 'set-key.ps1', '-Provider openai'),
+        @('Satchel - Check companion', 'status.ps1', ''),
+        @('Satchel - Uninstall companion', 'uninstall.ps1', '')
+    )
+    foreach ($it in $items) {
+        $lnk = $shell.CreateShortcut((Join-Path $menu ($it[0] + '.lnk')))
+        $lnk.TargetPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $lnk.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -NoExit -File "' + (Join-Path $installDir $it[1]) + '" ' + $it[2]
+        $lnk.WorkingDirectory = $installDir
+        $lnk.Save()
+    }
+    Write-Host ('Created shortcuts in Start menu > Satchel')
+} catch {
+    Write-Host 'Could not create Start menu shortcuts (this does not affect Satchel). Use set-key.cmd and status.cmd in this folder instead.' -ForegroundColor Yellow
+}
+
+Write-Step 'Groq API key (default AI provider)'
 $setKey = $true
-if ($existing) {
+if (Test-Path -LiteralPath (Get-SatchelKeyPath 'groq')) {
     $answer = Read-Host 'A Groq key is already stored. Replace it? (y/N)'
     if ($answer -notmatch '^[yY]') { $setKey = $false }
 }
-if ($setKey) {
-    & (Join-Path $PSScriptRoot 'set-key.ps1') -NoPause
-}
+if ($setKey) { & (Join-Path $PSScriptRoot 'set-key.ps1') -Provider groq -NoPause }
+
+Write-Step 'OpenAI API key (optional)'
+Write-Host 'Satchel can also use OpenAI for chat/notes or meeting transcription. OpenAI charges per request.'
+$answer = Read-Host 'Add an OpenAI key now? You can do it later from the Start menu. (y/N)'
+if ($answer -match '^[yY]') { & (Join-Path $PSScriptRoot 'set-key.ps1') -Provider openai -NoPause }
 
 Write-Step 'Done'
 Write-Host 'Next steps:'
 Write-Host '  1. In Chrome (chrome://extensions) or Edge (edge://extensions), load the Satchel "extension" folder.'
-Write-Host '  2. Click the Satchel toolbar icon, open Settings, and press "Test connection".'
+Write-Host '  2. Restart the browser, click the Satchel toolbar icon, and follow the setup checklist.'
+Write-Host '  Later: Start menu > Satchel has shortcuts to change keys or check the companion.'
 Write-Host ''
 Write-Host 'There is nothing to start at login: the browser launches the companion automatically when Satchel needs it.'
 Write-Host ('Extension ID allowed: ' + $script:SatchelExtensionId)

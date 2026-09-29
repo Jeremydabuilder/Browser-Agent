@@ -133,7 +133,7 @@ function wavToneHz(buf) {
   return Math.round((crossings / 2) / (n / rate));
 }
 
-export function startFakeGroq({ port = 0 } = {}) {
+export function startFakeGroq({ port = 0, key = FAKE_KEY } = {}) {
   const log = [];
   const control = { failNextTranscriptions: 0, rateLimitNextTranscriptions: 0 };
   const server = http.createServer((req, res) => {
@@ -148,7 +148,7 @@ export function startFakeGroq({ port = 0 } = {}) {
         res.writeHead(status, { 'content-type': 'application/json', ...headers });
         res.end(typeof obj === 'string' ? obj : JSON.stringify(obj));
       };
-      if (auth !== `Bearer ${FAKE_KEY}`) return send(401, { error: { message: 'Invalid API Key', type: 'invalid_request_error', code: 'invalid_api_key' } });
+      if (auth !== `Bearer ${key}`) return send(401, { error: { message: 'Invalid API Key', type: 'invalid_request_error', code: 'invalid_api_key' } });
       if (req.method === 'GET' && req.url === '/models') return send(200, { object: 'list', data: MODELS });
       if (req.method === 'POST' && req.url === '/audio/transcriptions') {
         const f = parseMultipart(raw, req.headers['content-type'] || '');

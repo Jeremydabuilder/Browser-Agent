@@ -1,13 +1,12 @@
 // "School" view: choose the school website and assignment pages, refresh them, and see
 // assignments grouped as Overdue / Today / This week / Later / Needs a date.
-import { h, clear, link, toast, modal, confirmDialog, confirmSendToAI, spinner } from '../../lib/ui.js';
+import { h, clear, link, toast, modal, confirmDialog, confirmSendToAI, spinner, errorBox } from '../../lib/ui.js';
 import { requestSiteAccess, hasSiteAccess, readAssignmentsInTab, unreadableReason } from '../../lib/browser.js';
 import * as school from '../../lib/school.js';
 import { bucketize, needsAttention, dedupeCandidates } from '../../lib/assignments.js';
 import { formatDue } from '../../lib/dates.js';
 import { getConnections } from '../../lib/google-auth.js';
 import { importClassroom } from '../../lib/classroom.js';
-import { friendlyError } from '../../lib/ai.js';
 import { isHttpUrl, hostnameOf } from '../../lib/util.js';
 
 let root;
@@ -210,7 +209,7 @@ async function refreshAll(cfg) {
     setStatus(h('div', { class: 'card soft small' }, h('b', {}, `Refresh done: ${totalAdded} new, ${totalUpdated} updated.`), h('ul', {}, summary)));
   } catch (err) {
     busy = false;
-    setStatus(h('p', { class: 'error' }, friendlyError(err)));
+    setStatus(errorBox(err));
   } finally {
     busy = false;
   }
@@ -240,7 +239,7 @@ async function importFromTab(tab, accessPromise) {
       cfg.pages.some((p) => p.url === tab.url.split('#')[0]) ? '' : h('span', {}, ' ', h('button', { class: 'btn link small', onclick: () => addPageDialog(tab.url, tab.title, true) }, 'Add this page to Refresh list'))));
   } catch (err) {
     busy = false;
-    setStatus(h('p', { class: 'error' }, friendlyError(err)));
+    setStatus(errorBox(err));
   } finally {
     busy = false;
   }

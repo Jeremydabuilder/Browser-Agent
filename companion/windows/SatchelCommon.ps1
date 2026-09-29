@@ -20,9 +20,22 @@ function Get-SatchelDataDir {
     return $dir
 }
 
-function Get-SatchelKeyPath {
-    if (Test-SatchelOnWindows) { return (Join-Path (Get-SatchelDataDir) 'groq-key.dat') }
-    return (Join-Path (Get-SatchelDataDir) 'groq-key.dev.txt')
+# AI providers the companion can talk to. Each has its own DPAPI-encrypted key file.
+$script:SatchelProviders = @('groq', 'openai')
+
+function Test-SatchelProvider([string]$Provider) {
+    return ($script:SatchelProviders -contains $Provider)
+}
+
+function Get-SatchelProviderLabel([string]$Provider) {
+    if ($Provider -eq 'openai') { return 'OpenAI' }
+    return 'Groq'
+}
+
+function Get-SatchelKeyPath([string]$Provider = 'groq') {
+    if (-not (Test-SatchelProvider $Provider)) { throw 'Unknown provider.' }
+    if (Test-SatchelOnWindows) { return (Join-Path (Get-SatchelDataDir) ($Provider + '-key.dat')) }
+    return (Join-Path (Get-SatchelDataDir) ($Provider + '-key.dev.txt'))
 }
 
 function Get-SatchelKeyStoreKind {
@@ -30,20 +43,26 @@ function Get-SatchelKeyStoreKind {
     return 'dev-plaintext-file'
 }
 
-function Get-GroqBaseUrl {
-    # SATCHEL_GROQ_BASE_URL exists ONLY for automated tests against a local fake server.
+function Get-ProviderBaseUrl([string]$Provider = 'groq') {
+    # SATCHEL_*_BASE_URL exist ONLY for automated tests against a local fake server.
+    if ($Provider -eq 'openai') {
+        if ($env:SATCHEL_OPENAI_BASE_URL) { return $env:SATCHEL_OPENAI_BASE_URL.TrimEnd('/') }
+        return 'https://api.openai.com/v1'
+    }
     if ($env:SATCHEL_GROQ_BASE_URL) { return $env:SATCHEL_GROQ_BASE_URL.TrimEnd('/') }
     return 'https://api.groq.com/openai/v1'
 }
+
+function Get-GroqBaseUrl { return (Get-ProviderBaseUrl 'groq') }
 
 function Initialize-SatchelDpapi {
     try { Add-Type -AssemblyName System.Security -ErrorAction Stop } catch { }
 }
 
-function Save-GroqKey([string]$Key) {
+function Save-ProviderKey([string]$Provider, [string]$Key) {
     $Key = $Key.Trim()
     if ([string]::IsNullOrWhiteSpace($Key)) { throw 'The key is empty.' }
-    $path = Get-SatchelKeyPath
+    $path = Get-SatchelKeyPath $Provider
     $bytes = [Text.Encoding]::UTF8.GetBytes($Key)
     if (Test-SatchelOnWindows) {
         Initialize-SatchelDpapi
@@ -58,8 +77,8 @@ function Save-GroqKey([string]$Key) {
     [Array]::Clear($bytes, 0, $bytes.Length)
 }
 
-function Get-GroqKey {
-    $path = Get-SatchelKeyPath
+function Get-ProviderKey([string]$Provider = 'groq') {
+    $path = Get-SatchelKeyPath $Provider
     if (-not (Test-Path -LiteralPath $path)) { return $null }
     $raw = [IO.File]::ReadAllBytes($path)
     if (Test-SatchelOnWindows) {
@@ -73,10 +92,15 @@ function Get-GroqKey {
     return ([Text.Encoding]::UTF8.GetString($raw)).Trim()
 }
 
-function Remove-GroqKey {
-    $path = Get-SatchelKeyPath
+function Remove-ProviderKey([string]$Provider) {
+    $path = Get-SatchelKeyPath $Provider
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
 }
+
+# Backwards-compatible Groq helpers.
+function Save-GroqKey([string]$Key) { Save-ProviderKey 'groq' $Key }
+function Get-GroqKey { return (Get-ProviderKey 'groq') }
+function Remove-GroqKey { Remove-ProviderKey 'groq' }
 
 function Write-SatchelErrorLog([string]$Code) {
     # Only error codes and timestamps are logged - never prompts, page text, email, or keys.
@@ -94,10 +118,11 @@ function Initialize-SatchelHttp {
     } catch { }
 }
 
-# Sends one HTTP request to Groq. Returns a hashtable safe to hand back to the extension
-# (status, body text, retry-after). Throws nothing; failures become error codes.
+# Sends one HTTP request to the chosen provider. Returns a hashtable safe to hand back to the
+# extension (status, body text, retry-after). Throws nothing; failures become error codes.
 function Invoke-GroqRequest {
     param(
+        [string]$Provider = 'groq',
         [string]$Method,
         [string]$Path,
         [string]$Body,
@@ -114,7 +139,7 @@ function Invoke-GroqRequest {
         $client = New-Object System.Net.Http.HttpClient($handler)
         $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSec)
         $httpMethod = New-Object System.Net.Http.HttpMethod($Method)
-        $req = New-Object System.Net.Http.HttpRequestMessage($httpMethod, ((Get-GroqBaseUrl) + $Path))
+        $req = New-Object System.Net.Http.HttpRequestMessage($httpMethod, ((Get-ProviderBaseUrl $Provider) + $Path))
         $req.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $Key)
         $req.Headers.Add('User-Agent', 'Satchel-Companion/' + $script:SatchelVersion)
         if ($Content) {
@@ -133,10 +158,10 @@ function Invoke-GroqRequest {
         while ($ex.InnerException -and -not ($ex -is [System.Threading.Tasks.TaskCanceledException])) { $ex = $ex.InnerException }
         if ($ex -is [System.Threading.Tasks.TaskCanceledException] -or $ex -is [System.OperationCanceledException] -or $ex -is [TimeoutException]) {
             Write-SatchelErrorLog 'timeout'
-            return [ordered]@{ ok = $false; error = [ordered]@{ code = 'timeout'; message = "Groq did not respond within $TimeoutSec seconds." } }
+            return [ordered]@{ ok = $false; error = [ordered]@{ code = 'timeout'; message = ((Get-SatchelProviderLabel $Provider) + " did not respond within $TimeoutSec seconds.") } }
         }
         Write-SatchelErrorLog 'network'
-        return [ordered]@{ ok = $false; error = [ordered]@{ code = 'network'; message = 'Could not reach Groq. Check your internet connection (some school networks block AI services).' } }
+        return [ordered]@{ ok = $false; error = [ordered]@{ code = 'network'; message = ('Could not reach ' + (Get-SatchelProviderLabel $Provider) + '. Check your internet connection (some school networks block AI services).') } }
     } finally {
         if ($client) { $client.Dispose() }
     }

@@ -3,6 +3,8 @@
 import { getItem, setItem } from './storage.js';
 import { getSettings } from './settings.js';
 import { isHttpUrl } from './util.js';
+import { resolveTaskModels, taskConfig, providerLabel } from './ai.js';
+import { estimateTranscriptionCost, estimateChatCost, checkBudget, formatUsd } from './pricing.js';
 
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -73,24 +75,60 @@ export async function confirmDialog({ title, message, details, confirmLabel = 'C
   return (await modal({ title, body, actions: [{ label: 'Cancel', value: false }, { label: confirmLabel, value: true, kind: danger ? 'danger' : 'primary' }] })) === true;
 }
 
-/**
- * Tells the user exactly what is about to be sent to Groq, and asks first (unless they turned that off
- * in Settings or chose "don't ask again" for this browser session).
- */
-export async function confirmSendToAI({ what, items = [], approxWords, extra }) {
+/** Which provider/model a task will use, its estimated cost, and whether the OpenAI guard blocks it. */
+export async function costSummary({ task, seconds = 0, words = 0 }) {
   const settings = await getSettings();
-  if (!settings.confirmBeforeSending) return true;
-  if (await getItem('consentSkip', false, 'session')) return true;
+  const r = await resolveTaskModels().catch(() => null);
+  const t = r?.[task === 'transcription' ? 'transcription' : 'chat'];
+  if (!t?.model) return { provider: taskConfig(settings, task === 'transcription' ? 'transcription' : 'chat').provider, lines: [h('p', { class: 'warn small' }, t?.error || 'Satchel could not check the model right now; the request may fail.')], blocked: false };
+  const est = task === 'transcription'
+    ? estimateTranscriptionCost(t.provider, t.model, seconds, settings.priceOverrides)
+    : estimateChatCost(t.provider, t.model, Math.ceil(words * 1.4) + 1500, 2500, settings.priceOverrides);
+  const lines = [h('p', { class: 'small' }, h('b', {}, 'Uses: '), `${providerLabel(t.provider)} · ${t.model}. `, h('b', {}, 'Estimated cost: '), `${formatUsd(est.usd)}`,
+    task === 'transcription' ? ` (${Math.max(1, Math.round(seconds / 60))} min × ${formatUsd(est.perMinute)}/min)` : '', est.known ? '' : ' (unknown price; cautious estimate)',
+    t.provider === 'groq' ? '. Groq\'s free tier may cost you nothing.' : '.')];
+  let blocked = false;
+  if (t.provider === 'openai') {
+    const b = await checkBudget('openai', est.usd, settings.openaiBudgetUsd);
+    lines.push(h('p', { class: b.ok ? 'muted small' : 'warn small' },
+      `OpenAI spending guard: ${formatUsd(b.used)} of ${formatUsd(b.limit)} used this month (Satchel's estimate, not OpenAI billing).`,
+      b.ok ? '' : ' This would go over the guard, so it can\'t be sent. Raise the guard in Settings → AI, or switch this task to Groq.'));
+    blocked = !b.ok;
+  }
+  if (task === 'transcription' && !t.timestamps) lines.push(h('p', { class: 'muted small' }, `${t.model} returns no timestamps, so transcript lines are timed per 5-minute part.`));
+  return { provider: t.provider, lines, blocked };
+}
+
+/**
+ * Tells the user exactly what is about to be sent to the chat provider (Groq by default, or OpenAI),
+ * and asks first (unless they turned that off in Settings or chose "don't ask again" for this browser
+ * session). For OpenAI it also shows the estimated cost and never skips the question when the
+ * spending guard would block the request.
+ * `costLines`: optional extra lines (e.g. from an estimate); `blocked`: disables Send.
+ */
+export async function confirmSendToAI({ what, items = [], approxWords, extra, costLines = [], blocked = false }) {
+  const settings = await getSettings();
+  const provider = settings.chatProvider === 'openai' ? 'openai' : 'groq';
+  const label = provider === 'openai' ? 'OpenAI' : 'Groq';
+  if (provider === 'openai' && !costLines.length) {
+    // OpenAI is paid: always show the estimate, and never skip the question when the guard would block it.
+    const cost = await costSummary({ task: 'chat', words: approxWords || 500 });
+    costLines = cost.lines;
+    blocked = blocked || cost.blocked;
+  }
+  if (!blocked && !settings.confirmBeforeSending) return true;
+  if (!blocked && await getItem('consentSkip', false, 'session')) return true;
   const skip = h('input', { type: 'checkbox', id: 'consent-skip' });
   const body = h('div', { class: 'consent' },
-    h('p', {}, `Satchel is about to send ${what} to Groq (your AI provider) through the Satchel companion on your PC.`),
+    h('p', {}, `Satchel is about to send ${what} to ${label} (your AI provider for chat) through the Satchel companion on your PC.`),
     items.length ? h('ul', { class: 'consent-list' }, items.map((i) => h('li', {}, i.url ? link(i.url, i.title || i.url) : i.title, i.words ? h('span', { class: 'muted' }, ` · about ${i.words.toLocaleString()} words`) : null))) : null,
     approxWords ? h('p', { class: 'muted' }, `About ${approxWords.toLocaleString()} words in total.`) : null,
     extra ? h('p', { class: 'muted' }, extra) : null,
-    h('p', { class: 'muted small' }, 'Groq processes this text to produce the answer. Nothing is saved to your memory unless you choose to save it.'),
-    h('label', { class: 'check' }, skip, ' Don\'t ask again until I restart the browser'),
+    costLines.map((l) => h('p', { class: blocked ? 'warn small' : 'muted small' }, l)),
+    h('p', { class: 'muted small' }, `${label} processes this text to produce the answer. Nothing is saved to your memory unless you choose to save it.`),
+    blocked ? null : h('label', { class: 'check' }, skip, ' Don\'t ask again until I restart the browser'),
   );
-  const ok = await modal({ title: 'Send to AI?', body, actions: [{ label: 'Cancel', value: false }, { label: 'Send to Groq', value: true, kind: 'primary' }] });
+  const ok = await modal({ title: 'Send to AI?', body, actions: [{ label: 'Cancel', value: false }, { label: `Send to ${label}`, value: true, kind: 'primary', disabled: blocked }] });
   if (ok && skip.checked) await setItem('consentSkip', true, 'session');
   return ok === true;
 }
@@ -200,4 +238,68 @@ export async function saveMemoryDialog({ prefill = '', addMemory, kinds = ['pref
 
 export function spinner(text = 'Working…') {
   return h('div', { class: 'spinner-row' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), h('span', { class: 'spinner-text' }, text));
+}
+
+export function optionsUrl(section = '') {
+  return chrome.runtime.getURL(`options/options.html${section ? `#${section}` : ''}`);
+}
+
+/** Opens a Settings section in a tab (reusing an open Settings tab when there is one). */
+export async function openSettings(section = '') {
+  const url = optionsUrl(section);
+  const base = chrome.runtime.getURL('options/options.html');
+  try {
+    const [existing] = await chrome.tabs.query({ url: `${base}*` });
+    if (existing) { await chrome.tabs.update(existing.id, { url, active: true }); await chrome.windows.update(existing.windowId, { focused: true }); return; }
+  } catch { /* fall through */ }
+  await chrome.tabs.create({ url });
+}
+
+// What the user should do next for each error code. Keep every step concrete.
+const NEXT_STEP = {
+  companion_missing: { steps: ['In your Satchel download, open companion\\windows and double-click install.cmd.', 'Close every browser window, then reopen the browser.'], action: ['Setup steps', 'companion'] },
+  companion_forbidden: { steps: ['Double-click install.cmd in companion\\windows again (it registers this copy of Satchel).', 'Restart the browser.'], action: ['Setup steps', 'companion'] },
+  companion_crashed: { steps: ['Open the Start menu and run “Satchel - Check companion”. It says what is blocking PowerShell.'], action: ['Setup steps', 'companion'] },
+  companion_error: { steps: ['Open the Start menu and run “Satchel - Check companion”.'], action: ['Setup steps', 'companion'] },
+  no_key: { action: ['Key setup', 'companion'] },
+  bad_key: { action: ['Key setup', 'companion'] },
+  model_unavailable: { action: ['Choose a model', 'model'] },
+  budget_reached: { action: ['Spending guard', 'spending'] },
+  quota: { action: ['Switch provider', 'model'] },
+  forbidden: { action: ['AI settings', 'model'] },
+  too_long: { steps: ['Ask about fewer pages or a shorter selection, or pick a model with a larger context in Settings → AI.'] },
+};
+const RETRYABLE = new Set(['rate_limited', 'timeout', 'server_error', 'network', 'failed', 'bad_output', 'companion_crashed', 'companion_error', 'json_failed']);
+
+/**
+ * An error message that says what to do next: numbered steps and a button to the right Settings
+ * section, plus "Try again" for temporary failures (rate limits count down before re-enabling).
+ * Accepts an Error (uses .code / .retryAfter) or a plain message and code.
+ */
+export function errorBox(errOrMessage, code, { retry, className = 'error-box' } = {}) {
+  const isErr = errOrMessage && typeof errOrMessage === 'object';
+  const message = isErr ? (errOrMessage.name === 'AIError' || errOrMessage.code ? errOrMessage.message : `Something went wrong: ${errOrMessage.message || errOrMessage}`) : String(errOrMessage || 'Something went wrong.');
+  const c = code || (isErr ? errOrMessage.code : '') || '';
+  const retryAfter = isErr ? Number(errOrMessage.retryAfter) || 0 : 0;
+  const next = NEXT_STEP[c] || {};
+  const box = h('div', { class: className, role: 'alert', dataset: { code: c } }, h('p', { class: 'error-text' }, message));
+  if (next.steps?.length) box.append(h('ol', { class: 'error-steps small' }, next.steps.map((s) => h('li', {}, s))));
+  const buttons = h('div', { class: 'btn-row error-actions' });
+  if (next.action) buttons.append(h('button', { class: 'btn small', onclick: () => openSettings(next.action[1]) }, next.action[0]));
+  if (retry && RETRYABLE.has(c || 'failed')) {
+    const btn = h('button', { class: 'btn small primary', onclick: () => retry() }, 'Try again');
+    if (c === 'rate_limited' && retryAfter > 0 && retryAfter <= 120) {
+      let left = Math.ceil(retryAfter);
+      btn.disabled = true;
+      btn.textContent = `Try again in ${left}s`;
+      const t = setInterval(() => {
+        left -= 1;
+        if (left <= 0 || !btn.isConnected) { clearInterval(t); btn.disabled = false; btn.textContent = 'Try again'; return; }
+        btn.textContent = `Try again in ${left}s`;
+      }, 1000);
+    }
+    buttons.append(btn);
+  }
+  if (buttons.childNodes.length) box.append(buttons);
+  return box;
 }

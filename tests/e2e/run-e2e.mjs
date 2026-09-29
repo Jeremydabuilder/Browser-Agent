@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import { startFakeGroq, FAKE_KEY } from '../support/fake-groq.mjs';
 import { startFixtureServer } from '../support/fixture-server.mjs';
 import { runMeetingSteps } from './meetings-steps.mjs';
+import { waitForExtPage } from './pages.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EXT_ID = 'enhkjfoecodefiigkephlalmoebbfgmb';
@@ -93,14 +94,20 @@ const manifest = JSON.parse(readFileSync(path.join(extDir, 'manifest.json'), 'ut
 manifest.host_permissions = ['http://127.0.0.1/*'];
 writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
+// --browser=edge runs the suite in Microsoft Edge (path from SATCHEL_EDGE_PATH, default /usr/bin/microsoft-edge).
+const browserArg = (process.argv.find((a) => a.startsWith('--browser=')) || '--browser=chromium').split('=')[1];
+const edgePath = process.env.SATCHEL_EDGE_PATH || '/usr/bin/microsoft-edge';
+export const BROWSER = browserArg === 'edge' ? 'edge' : 'chromium';
 const launch = () => chromium.launchPersistentContext(userData, {
-  channel: 'chromium',
+  ...(BROWSER === 'edge' ? { executablePath: edgePath } : { channel: 'chromium' }),
   headless,
   viewport: { width: 420, height: 900 },
   acceptDownloads: true,
   permissions: ['microphone'],
   args: [
     `--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
+    // Branded Chrome/Edge 137+ ignore --load-extension unless this switch is disabled.
+    '--disable-features=DisableLoadExtensionCommandLineSwitch',
     // Meetings: let the meeting fixture page play sound, use a fake microphone, and have the browser's
     // tab picker choose the "Meeting Fixture" tab automatically (automation cannot click the picker).
     '--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream',
@@ -150,9 +157,9 @@ await context.route('https://classroom.googleapis.com/**', async (route) => {
 
 async function openPanel() {
   // Open the side panel UI in its own popup window, like the docked side panel next to the page.
-  const pagePromise = context.waitForEvent('page', (p) => p.url().includes('sidepanel.html'));
+  const existing = context.pages().filter((x) => x.url().includes('sidepanel.html'));
   await sw.evaluate((url) => chrome.windows.create({ url, type: 'popup', width: 420, height: 900 }), `chrome-extension://${extId}/sidepanel/sidepanel.html`);
-  const p = await pagePromise;
+  const p = await waitForExtPage(context, 'sidepanel.html', { exclude: existing });
   await p.waitForLoadState('domcontentloaded');
   return p;
 }
@@ -177,7 +184,8 @@ async function storage(area, key) {
   return sw.evaluate(async ([a, k]) => (await chrome.storage[a].get(k))[k], [area, key]);
 }
 
-console.log(`Satchel end-to-end test (extension ${extId}, headless=${headless}, source=${fromDist ? 'release ZIPs' : 'repository folders'})`);
+const browserVersion = await sw.evaluate(() => navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g).join(' '));
+console.log(`Satchel end-to-end test (${BROWSER}: ${browserVersion}, extension ${extId}, headless=${headless}, source=${fromDist ? 'release ZIPs' : 'repository folders'})`);
 
 // ---- tests -----------------------------------------------------------------------------------
 await step('extension loads with the fixed ID so the companion only trusts it', async () => {
@@ -189,7 +197,24 @@ panel = await openPanel();
 
 await step('side panel shows the AI companion as ready (real native messaging to PowerShell host)', async () => {
   await panel.locator('#companion-status.ok').waitFor({ timeout: 30000 });
-  assert.equal(await panel.textContent('#companion-status'), 'AI: ready');
+  assert.equal(await panel.textContent('#companion-status'), 'AI: ready · Groq');
+  assert.equal(await panel.locator('#setup-card').count(), 0, 'no setup card when ready');
+});
+
+await step('side panel shows exact setup steps when a chosen provider has no key, and clears them when fixed', async () => {
+  await sw.evaluate(async () => {
+    const s = (await chrome.storage.local.get('settings')).settings || {};
+    await chrome.storage.local.set({ settings: { ...s, transcriptionProvider: 'openai' } });
+  });
+  await panel.locator('#setup-card', { hasText: 'Add your OpenAI key' }).waitFor({ timeout: 30000 });
+  assert.match(await panel.textContent('#setup-card'), /Satchel - Set OpenAI key/);
+  assert.equal(await panel.textContent('#companion-status'), 'AI: not set up');
+  await sw.evaluate(async () => {
+    const s = (await chrome.storage.local.get('settings')).settings;
+    await chrome.storage.local.set({ settings: { ...s, transcriptionProvider: 'groq' } });
+  });
+  await panel.locator('#setup-card').waitFor({ state: 'detached', timeout: 30000 });
+  assert.equal(await panel.textContent('#companion-status'), 'AI: ready · Groq');
 });
 
 await step('current page is detected and what will be sent is explained', async () => {
@@ -518,11 +543,14 @@ await step('Memory page: inspect, edit, toggle AI use, export, delete', async ()
   await mem.close();
 });
 
-await step('Settings: companion test lists live models; model choice saved; redirect URI shown', async () => {
+await step('Settings: per-provider key status and "Will use" per task; model choice saved; redirect URI shown', async () => {
   const opt = await context.newPage();
   await opt.goto(`chrome-extension://${extId}/options/options.html`);
   await opt.locator('#companion-status.ok').waitFor({ timeout: 30000 });
-  assert.match(await opt.textContent('#companion-status'), /2 chat models available/);
+  assert.match(await opt.textContent('#key-status'), /key stored\s*Groq/);
+  assert.match(await opt.textContent('#key-status'), /no key\s*OpenAI/);
+  await opt.locator('#chat-uses', { hasText: 'Groq' }).waitFor({ timeout: 15000 });
+  await opt.locator('#stt-uses', { hasText: 'Groq' }).waitFor({ timeout: 15000 });
   await opt.selectOption('#model-select', 'llama-3.1-8b-instant');
   await opt.waitForTimeout(300);
   assert.equal((await storage('local', 'settings')).model, 'llama-3.1-8b-instant');
@@ -542,6 +570,7 @@ await step('Groq rate limit surfaces a friendly message (model configured to a r
   await panel.click('.composer button:has-text("Send")');
   await panel.locator('.msg.error').last().waitFor({ timeout: 45000 });
   assert.match(await panel.locator('.msg.error').last().textContent(), /rate limit/i);
+  assert.equal(await panel.locator('.msg.error').last().locator('button', { hasText: /Try again/ }).count(), 1, 'rate limit offers Try again');
 });
 
 await step('No Groq key is stored anywhere in browser storage', async () => {
@@ -551,7 +580,7 @@ await step('No Groq key is stored anywhere in browser storage', async () => {
 });
 
 // ---- meetings (recording, import, transcription, notes, recovery) ----
-({ context, sw, panel } = await runMeetingSteps({ step, context, sw, panel, extId, userData, watchConsole, site, groq, openPanel: () => openPanel(), launch, work, artifacts, headless, storage: (a, k) => sw.evaluate(async ([ar, ke]) => (await chrome.storage[ar].get(ke))[ke], [a, k]), clickModalButton, showView: (n) => panel.click(`.tabs button[data-view="${n}"]`) }));
+({ context, sw, panel } = await runMeetingSteps({ browser: BROWSER, step, context, sw, panel, extId, userData, watchConsole, site, groq, openPanel: () => openPanel(), launch, work, artifacts, headless, storage: (a, k) => sw.evaluate(async ([ar, ke]) => (await chrome.storage[ar].get(ke))[ke], [a, k]), clickModalButton, showView: (n) => panel.click(`.tabs button[data-view="${n}"]`) }));
 
 // ---- teardown ----------------------------------------------------------------------------------
 await context.close();

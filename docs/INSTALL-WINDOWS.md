@@ -6,8 +6,9 @@ You need:
 * Windows 10 or 11
 * Google Chrome (version 116 or newer) and/or Microsoft Edge (version 116 or newer)
 * A free Groq account for the AI: <https://console.groq.com>
+* Optional: an OpenAI account with billing, if you want to use OpenAI for chat/notes or transcription
 
-> **What has been tested so far (please read).** Satchel was built and tested on Linux in Chromium, with the companion running under PowerShell 7 and a simulated Groq service. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Microsoft Edge, a real Groq key (chat or speech-to-text), real Google sign-in for Gmail and Classroom, one-click meeting-tab capture after clicking the Satchel icon, and importing a real Zoom recording. This guide describes how those parts are designed to work. If a step behaves differently, run `status.cmd` and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
+> **What has been tested so far (please read).** Satchel was tested on Linux in Chromium and in Microsoft Edge 154 for Linux, with the companion running under PowerShell 7 and **simulated** Groq and OpenAI services. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, Start menu shortcuts, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Chrome or Edge on Windows, a real Groq key or a real OpenAI key (chat or speech-to-text, and therefore real costs), real Google sign-in for Gmail and Classroom, one-click meeting-tab capture after clicking the Satchel icon, and importing a real Zoom recording (a generated Zoom-style M4A/MP4 was imported in Linux Edge). This guide describes how those parts are designed to work. If a step behaves differently, run Start menu → Satchel - Check companion (or `status.cmd`) and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
 
 ---
 
@@ -52,21 +53,39 @@ The companion is a small helper that lets the extension use Groq without the key
    * If Windows shows **“Windows protected your PC”**, click **More info → Run anyway**.
 3. When it asks for the key, **paste it** (right-click or Ctrl+V; the characters are hidden on purpose) and press **Enter**.
 4. It checks the key with Groq and saves it **encrypted for your Windows account** (Windows DPAPI). You'll see “Key verified and saved”.
-5. **Close every Chrome/Edge window and reopen the browser** (needed once so the browser finds the companion).
+5. It then asks whether you also want to add an **OpenAI key**. This is optional: press **Enter** to skip (you can add one later, see [Optional: OpenAI](#optional-use-openai-for-some-tasks)).
+6. **Close every Chrome/Edge window and reopen the browser** (needed once so the browser finds the companion).
 
 There's nothing to start at login: the browser launches the companion automatically when Satchel needs it, and it closes again after each request.
 
-**Check it:** click the Satchel icon. The header should say **AI: ready** (green). Or open ⚙️ Settings and press **Test connection**, which also lists the models available on your Groq account.
+**Check it:** click the Satchel icon. The header should say **AI: ready · Groq** (green).
+If something is missing, a **setup card** at the top of the side panel says exactly what to do (for example “Install the Satchel companion” with the three steps, or “Add your Groq key”), with a **Check again** button. Pages, tabs and memory keep working while AI is not set up. For details, open ⚙️ Settings → **Companion** and press **Test connection**: it shows which keys are stored, and **AI providers** shows the provider and model each task will use.
 
-Companion tools (in `companion\windows`):
-| File | Use |
-|---|---|
-| `install.cmd` | Install or repair the companion (safe to run again) |
-| `set-key.cmd` | Replace your Groq key |
-| `status.cmd` | Diagnose: shows registration, key status, and whether Groq is reachable |
-| `uninstall.cmd` | Remove the companion (optionally delete the key) |
+The installer also adds a **Start menu → Satchel** folder, so you never have to find the download folder again:
+| Start menu shortcut | Same as (in `companion\windows`) | Use |
+|---|---|---|
+| Satchel - Set Groq key | `set-key.cmd` | Add or replace your Groq key |
+| Satchel - Set OpenAI key | `set-openai-key.cmd` | Add or replace your optional OpenAI key |
+| Satchel - Check companion | `status.cmd` | Diagnose: registration, each key's status, whether the providers are reachable, and whether PowerShell is restricted |
+| Satchel - Uninstall companion | `uninstall.cmd` | Remove the companion (asks about each key) |
 
-The companion is copied to `%LOCALAPPDATA%\Satchel\companion`, and the encrypted key is at `%LOCALAPPDATA%\Satchel\groq-key.dat`. Only your Windows account can decrypt it.
+Run `install.cmd` again any time to repair the companion.
+
+The companion is copied to `%LOCALAPPDATA%\Satchel\companion`. The encrypted keys are `%LOCALAPPDATA%\Satchel\groq-key.dat` and (if you add one) `openai-key.dat`. Only your Windows account can decrypt them. Keys are never stored in the browser, in logs, or in the repository.
+
+## Optional: use OpenAI for some tasks
+
+Groq stays the default for everything. You can switch **chat and notes** (Ask, school AI reading, email drafts, meeting notes) and **meeting transcription** to OpenAI separately.
+
+1. Create a key at <https://platform.openai.com/api-keys> (it starts with `sk-`). OpenAI is paid per use: your account needs billing or credit.
+2. Start menu → **Satchel - Set OpenAI key**, paste the key, press Enter. It is checked with OpenAI and saved encrypted, like the Groq key.
+3. In ⚙️ Settings → **AI providers and models**, choose **OpenAI** for chat/notes, transcription, or both. Under each task, **Will use:** shows the provider, the model (Auto picks one from your account's live model list), its estimated price, and for transcription whether transcript lines get exact timestamps (`whisper-1` does; the `gpt-4o-…-transcribe` models don't, so lines are timed per 5-minute part).
+
+**Costs and the spending guard** (Settings → **Costs**):
+* Before sending anything to OpenAI, the consent dialog shows the **estimated cost**. For a meeting it is based on the recording length (for example 60 min × $0.006/min = $0.36 with `whisper-1`). Nothing is sent until you press Send.
+* **OpenAI spending guard (per month):** when Satchel's running estimate for this month would go over the amount you set, Satchel stops **before** making the next OpenAI request and tells you. The default is $5; set it to $0 to block OpenAI completely. A long transcription that would cross the guard can't be started (the Send button is disabled).
+* **This is an estimate made by Satchel on your computer, not an OpenAI billing limit.** Real charges can differ (price changes, retries, rounding), and it only counts requests made by Satchel in this browser. To cap what OpenAI can actually charge, set a budget in your OpenAI account's billing settings.
+* The prices used for estimates are listed there and can be edited if OpenAI changes them. **Reset this month's estimate** clears the running total.
 
 ## 5. Using Satchel
 
@@ -107,9 +126,9 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 * **Review & send…** shows the recipients, subject, and complete message. Sending needs the separate “Gmail: send replies you approve” connection, plus your click on **Send email** for each message. Without the send connection, use **Copy text** and send from Gmail yourself.
 
 ### Meetings
-**What has been checked so far.** All automated tests ran on Linux in open-source Chromium. Nothing below has been tried on Windows or in Edge. Please run section H of [MANUAL-TESTS.md](MANUAL-TESTS.md).
+**What has been checked so far.** Automated tests ran on Linux in open-source Chromium and in Microsoft Edge 154 for Linux. Nothing below has been tried on Windows. Please run section H of [MANUAL-TESTS.md](MANUAL-TESTS.md).
 
-* **Tested** = the real feature ran in an automated test (on Linux Chromium).
+* **Tested** = the real feature ran in an automated test (on Linux Chromium and Linux Edge).
 * **Simulated** = it ran against a stand-in (a fake Groq service, a fake microphone, or an automatically chosen tab).
 * **Untested** = not run at all yet.
 
@@ -120,8 +139,8 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 | Microphone recording | **Simulated** | Chromium's fake microphone only. A real microphone, the permission prompt, and the denied-permission warning in a real browser are untested. |
 | Recovery after a closed recorder window or a browser crash | **Tested on Linux** | Audio saved up to about 2 s before the interruption is kept and playable. |
 | Import WAV | **Tested on Linux** | A generated WAV file is split into parts correctly. |
-| Import Zoom recordings (M4A/MP4) | **Untested** | Open-source Chromium can't decode AAC. Branded Chrome and Edge should, but no real Zoom file has been imported. |
-| Transcription | **Simulated** | The real companion uploads each part, one failed part is retried alone, and timestamps line up. Groq itself was a fake service, so real Whisper accuracy and rate limits are untested. |
+| Import Zoom recordings (M4A/MP4) | **Tested in Edge on Linux, generated file** | A generated Zoom-style `audio_only.m4a` and `zoom_0.mp4` (AAC) were imported in Microsoft Edge 154 for Linux, split into parts, and transcribed in order. No real Zoom recording and no Windows Edge/Chrome yet. Open-source Chromium can't decode AAC. |
+| Transcription (Groq or OpenAI) | **Simulated** | The real companion uploads each part, one failed part is retried alone, timestamps line up, and it keeps running with the side panel closed. Groq and OpenAI were fake services, so real accuracy, real rate limits and real charges are untested. |
 | Transcript correction, notes, timestamp links | **Simulated (Groq)** | The UI and the grounding rules are tested (invented decisions are dropped; owners and dates only when stated). The notes' wording came from a fake AI. |
 | Export (Markdown / plain text), search, rename | **Tested on Linux** | |
 | Separate deletion of audio, transcript, notes; no memory writes | **Tested on Linux** | |
@@ -141,7 +160,7 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 * **Zoom desktop app:** Satchel can't record the Zoom app (or any desktop app) live. Record in Zoom instead (**Record → Record on this computer**). When the meeting ends, open `Documents\Zoom\<meeting folder>` and import **`audio_only.m4a`**, which is much smaller than the MP4. You can also join the meeting in the browser (Zoom's “Join from your browser” link) and record that tab.
 
 **Transcribe, review, and make notes:**
-1. Open the meeting and press **Transcribe with Groq…**. Satchel shows how many minutes and MB of audio will be sent, and sends nothing until you press **Send audio to Groq**. Parts are sent one at a time. If one fails, the others are kept; press **Retry failed parts**. If Groq's hourly audio limit is reached (on the free tier, about 2 hours of audio per hour), your progress is saved; press **Resume transcription** later. Keep the side panel open while it runs.
+1. Open the meeting and press **Transcribe with Groq…** (or **with OpenAI…** if you chose OpenAI for transcription). Satchel shows how many minutes and MB of audio will be sent, the model, and the **estimated cost**, and sends nothing until you press **Send audio to Groq** / **Send audio to OpenAI**. Parts are sent one at a time. If one fails, the others are kept; press **Retry failed parts**. If the provider's rate limit is reached (on Groq's free tier, about 2 hours of audio per hour), your progress is saved; press **Resume transcription** later. **It keeps going if you close the side panel**; reopen it to see the result.
 2. Read the transcript and fix names or words (edits save automatically).
 3. Press **I reviewed the transcript: generate notes…**, then approve sending the transcript text. The notes have a summary, key points, decisions, action items, and open questions. Every item links to the moment in the transcript (⏱ chips).
    * Decisions and action items appear only if the transcript actually contains them. Suggestions the AI couldn't back up are listed separately as “left out”.
@@ -149,7 +168,7 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 4. Edit any field (it saves automatically), tick action items when done, and export **Markdown** or **plain text** (notes only, transcript only, or everything).
 5. Delete separately with **Delete raw audio**, **Delete transcript**, and **Delete notes**, or delete the whole meeting. Meeting content is never added to Satchel's memory.
 
-Settings → AI model lets you choose the speech-to-text model (from the Whisper models your Groq account offers) and the meeting language.
+Settings → **AI providers and models** lets you choose the transcription provider and model (from your account's live list) and the meeting language.
 
 ### Memory
 * Type `/remember I prefer bullet-point summaries` in Ask, or use **Save a note to memory…** under an answer.
@@ -158,12 +177,17 @@ Settings → AI model lets you choose the speech-to-text model (from the Whisper
 
 ## 6. Troubleshooting
 
+Error messages in the side panel now include the next step: numbered steps, a button to the right Settings section, and **Try again** for temporary problems (for rate limits it counts down first).
+
 | Problem | Fix |
 |---|---|
-| Header says **AI: not set up** / “companion is not installed” | Run `install.cmd`, then close **all** browser windows and reopen. |
+| Header says **AI: not set up** / “companion is not installed” | Follow the setup card at the top of the side panel: run `install.cmd`, then close **all** browser windows and reopen. |
 | “installed for a different extension ID” | You loaded a copy with a different ID. Load the `extension` folder from this repository, or run `install.cmd` again. |
-| “companion stopped unexpectedly” | Run `status.cmd`. School-managed PCs sometimes block PowerShell scripts; the rest of Satchel still works, but AI features won't. |
-| “Groq rejected the stored API key” | Run `set-key.cmd` with a new key from console.groq.com/keys. |
+| “companion could not start” | Start menu → **Satchel - Check companion** (or `status.cmd`). School-managed PCs sometimes block PowerShell scripts; the rest of Satchel still works, but AI features won't. |
+| “Groq rejected the stored API key” / “OpenAI rejected…” | Start menu → **Satchel - Set Groq key** / **Set OpenAI key** with a new key. |
+| “No OpenAI key is stored” | You chose OpenAI for a task. Add the key (Start menu → Satchel - Set OpenAI key), or switch the task back to Groq in Settings → AI providers. |
+| “Your OpenAI account has no credit or quota left” | Add billing or credit in your OpenAI account, or switch the task to Groq. Satchel doesn't retry this. |
+| “Stopped before sending: … spending guard” | Satchel's own monthly estimate reached your guard. Raise it in Settings → Costs, reset the month's estimate, or switch the task to Groq. |
 | “rate limit reached” | Groq's free tier limits requests per minute. Wait the time shown, choose a smaller model in Settings, or lower “Max page text per request”. |
 | “Could not reach Groq” | Check your internet connection. Some school networks block AI services. |
 | A model disappeared | With **Auto**, Satchel picks another automatically and tells you. Otherwise pick one in Settings → Refresh list. |
@@ -178,4 +202,4 @@ Settings → AI model lets you choose the speech-to-text model (from the Whisper
 ## 7. Updating and removing
 
 * **Update:** replace the Satchel folder with the new version, then click the **↻ reload** icon on Satchel's card in `chrome://extensions` / `edge://extensions`. Run `install.cmd` again if the companion changed. Your data and key are kept.
-* **Remove:** click **Remove** on the extension card (this deletes Satchel's browser data), then run `companion\windows\uninstall.cmd` (it asks whether to delete the key). Also delete the Groq key at console.groq.com if you no longer need it.
+* **Remove:** click **Remove** on the extension card (this deletes Satchel's browser data), then Start menu → **Satchel - Uninstall companion** (or `companion\windows\uninstall.cmd`; it asks whether to delete each key). Also delete the keys at console.groq.com / platform.openai.com if you no longer need them.

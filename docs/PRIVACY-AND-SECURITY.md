@@ -2,9 +2,14 @@
 
 ## What goes where
 
-| Data | Where it's stored | Sent to Groq? |
+“Sent to the AI provider” means Groq by default, or OpenAI for a task you switched to OpenAI in Settings. Every consent dialog names the provider.
+
+| Data | Where it's stored | Sent to the AI provider? |
 |---|---|---|
-| Groq API key | `%LOCALAPPDATA%\Satchel\groq-key.dat`, encrypted with Windows DPAPI (current user) plus app-specific entropy | Only as the HTTPS `Authorization` header, sent by the companion |
+| Groq API key | `%LOCALAPPDATA%\Satchel\groq-key.dat`, encrypted with Windows DPAPI (current user) plus app-specific entropy | Only to Groq, as the HTTPS `Authorization` header, sent by the companion |
+| OpenAI API key (optional) | `%LOCALAPPDATA%\Satchel\openai-key.dat`, encrypted the same way | Only to OpenAI, as the HTTPS `Authorization` header, sent by the companion. Each key goes only to its own provider |
+| Cost estimates (monthly totals and request counts per provider) | `chrome.storage.local` (`spend`); reset any time in Settings → Costs | Never |
+| Companion status (ready / which keys exist, no key values) | `chrome.storage.session`, cleared when the browser closes | Never |
 | Settings, school pages, assignments, saved tab groups | `chrome.storage.local` (this browser profile) | Assignment pages only when you use AI extraction, after you confirm |
 | Memories | `chrome.storage.local` | Only if “Use in AI” is on (global and per-memory switches) |
 | Chat history | `chrome.storage.session` (memory only, cleared when the browser closes) | Only in “No page” chat, and only the last few turns |
@@ -12,8 +17,8 @@
 | Email content | Not stored | Only the threads you select, after the consent notice |
 | Tab titles and addresses | Not stored | Only for AI tab commands: the current window, with query strings and fragments removed |
 | Google access token | `chrome.storage.session` (memory only) | Never |
-| Meeting audio (recorded or imported) | IndexedDB in this browser profile, in parts; delete with “Delete raw audio” | Only after you approve **Send audio to Groq** for that meeting (always asked; the global “don't ask again” doesn't apply) |
-| Meeting transcripts and your corrections | IndexedDB, stored with each audio part; delete with “Delete transcript” | The corrected transcript text, only after you approve **Send transcript to Groq** for notes |
+| Meeting audio (recorded or imported) | IndexedDB in this browser profile, in parts; delete with “Delete raw audio” | Only after you approve **Send audio to Groq** (or **to OpenAI**) for that meeting (always asked; the global “don't ask again” doesn't apply) |
+| Meeting transcripts and your corrections | IndexedDB, stored with each audio part; delete with “Delete transcript” | The corrected transcript text, only after you approve sending the transcript to the chat provider for notes |
 | Meeting notes | IndexedDB, with the meeting; delete with “Delete notes” | Never (notes are generated from the transcript) |
 
 Meetings are never added to Satchel's memory. Recording starts only when you press Start, happens in a visible recorder window, and shows REC on the toolbar icon. Satchel never joins meetings, never records in the background, and captures only the chosen tab (plus your microphone if you tick it).
@@ -30,7 +35,7 @@ Satchel has **no background monitoring**. The service worker only sets up the si
 | `tabGroups` | Group tabs and reopen saved groups as a group |
 | `scripting` | Run the read-only page extractor on pages you ask about |
 | `activeTab` | Temporary access to the tab you invoked Satchel on |
-| `nativeMessaging` | Talk to the Windows companion that holds the Groq key |
+| `nativeMessaging` | Talk to the Windows companion that holds the Groq (and optional OpenAI) key |
 | `tabCapture` | Record the audio of the meeting tab you chose, only after you invoke Satchel on that tab and press Start |
 | `contextMenus` | The right-click item “Record this tab with Satchel…” (it only opens the Meetings view) |
 | `unlimitedStorage` | Keep long meeting recordings on this computer without hitting the browser's default storage quota |
@@ -40,9 +45,10 @@ Satchel has **no background monitoring**. The service worker only sets up the si
 ## Companion hardening
 
 * Implemented as a **native messaging host**: no network listener, so no other website or program on the network can talk to it. The browser registry entry (`HKCU\Software\{Google\Chrome|Microsoft\Edge}\NativeMessagingHosts\com.satchel.companion`) lists only Satchel's fixed extension ID in `allowed_origins`, and the host also checks the caller origin itself.
-* Accepts exactly three requests (`ping`, `models`, `chat`). A `chat` body must be JSON with `model` and `messages`, and requests are capped at 8 MB. The key is never returned.
+* Accepts exactly four requests (`ping`, `models`, `chat`, `transcribe`), each for a provider of `groq` or `openai` (anything else is rejected). A `chat` body must be JSON with `model` and `messages`; audio parts are capped at 25 MB. `ping` reports only whether each key exists. Keys are never returned.
 * Logs contain only error codes and timestamps (`%LOCALAPPDATA%\Satchel\companion-errors.log`). They never include prompts, page text, email, or the key.
-* `SATCHEL_GROQ_BASE_URL` and `SATCHEL_DATA_DIR` environment variables exist for automated tests only.
+* `SATCHEL_GROQ_BASE_URL`, `SATCHEL_OPENAI_BASE_URL` and `SATCHEL_DATA_DIR` environment variables exist for automated tests only.
+* The OpenAI spending guard is enforced in the extension before each OpenAI request, from Satchel's own estimate. It is not a billing control; set a budget in your OpenAI account for a hard cap.
 
 ## Prompt-injection defenses
 

@@ -1,6 +1,6 @@
 // "Email" view: summarize selected Gmail threads, draft replies, and send only after the user
 // reviews the recipient, subject and complete message and confirms.
-import { h, clear, link, toast, modal, confirmSendToAI, renderRichText, spinner } from '../../lib/ui.js';
+import { h, clear, link, toast, modal, confirmSendToAI, renderRichText, spinner, errorBox } from '../../lib/ui.js';
 import { GOOGLE_SERVICES, getConnections, connect, disconnect, GoogleError } from '../../lib/google-auth.js';
 import { listThreads, getThread, buildReplyDraft, validateOutgoing, sendMessage, threadForPrompt, splitAddresses } from '../../lib/gmail.js';
 import { chat, friendlyError } from '../../lib/ai.js';
@@ -174,7 +174,7 @@ async function summarizeSelected() {
       h('div', { class: 'btn-row' }, h('button', { class: 'btn small', onclick: () => startReply(parsed.id, parsed) }, 'Draft a reply'),
         link(`https://mail.google.com/mail/u/0/#all/${parsed.id}`, 'Open in Gmail', 'btn small'))))));
   } catch (err) {
-    setStatus(err instanceof GoogleError ? renderGoogleError(err) : h('p', { class: 'error' }, friendlyError(err)));
+    setStatus(err instanceof GoogleError ? renderGoogleError(err) : errorBox(err));
   }
 }
 
@@ -187,7 +187,7 @@ async function startReply(threadId, parsed = null) {
     setStatus(null);
     renderCompose();
   } catch (err) {
-    setStatus(err instanceof GoogleError ? renderGoogleError(err) : h('p', { class: 'error' }, friendlyError(err)));
+    setStatus(err instanceof GoogleError ? renderGoogleError(err) : errorBox(err));
   }
 }
 
