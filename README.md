@@ -7,6 +7,7 @@ Satchel is a Chrome and Microsoft Edge extension (Manifest V3) that lives in the
 | **Ask** | Summarize the current page, answer questions grounded in it, compare selected tabs, or research a question across tabs. Answers separate **facts from the page** (with clickable source links and quote checks) from **Satchel's inference**. Pages it couldn't read are listed and never used. |
 | **School** | Choose your school website and the pages that list assignments. **Refresh** reads them in background tabs using your signed-in session (no school API needed). You get Overdue / Today / This week / Later / Needs a date views. Missing, unclear, or guessed dates are flagged. You can correct or add assignments, repeated assignments are merged, and each links back to its original page. Optional Google Classroom import. |
 | **Tabs** | List, search, group, save, reopen, and close tabs. Understands commands like “close duplicate tabs” and “save these research tabs and close them”. Before any tab closes, it shows the exact tabs, and pinned tabs are only included if you tick them yourself. |
+| **Meetings** | Record a meeting running in a Chrome/Edge tab (Meet, Zoom web, Teams web…), optionally with your microphone, or import a recording (e.g. Zoom's `audio_only.m4a`). Audio is saved locally in 5-minute parts and sent to Groq for transcription only after you approve it. Failed parts can be retried alone. Correct the transcript, then generate editable notes (summary, key points, decisions, action items, open questions) with timestamp links back to the transcript. Decisions and action items must quote the transcript, and owners and dates are kept only when stated. Search, rename, export to Markdown or plain text, and delete audio, transcript, and notes separately. It can't record desktop apps (such as the Zoom app) live. |
 | **Email** | Separate Gmail connections for *reading* and *sending*. Summarize the threads you pick and draft replies with AI. Before sending, you review the recipients, subject, and full message and confirm each send. |
 | **Memory** | Save preferences, projects, and facts on purpose (`/remember …`). A Memory page lets you inspect, edit, export, import, and delete them. Chat history is separate and cleared when the browser closes. |
 | **AI** | Uses **your Groq account** through a small **Windows companion**. The API key is stored encrypted with Windows DPAPI and never enters the extension, browser storage, logs, or Git. The model list comes live from Groq, so you can choose any available model. Rate limits, timeouts, retired models, and long pages are handled. |
@@ -24,10 +25,17 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 
 ## Verification status
 
+"Simulated" below means a local stand-in replaced the real service. "Real" means the actual thing ran.
+
 | Part | Status |
 |---|---|
-| Extension UI and logic in Chromium (Ask, School, Tabs, Memory, Settings) | **Tested automatically:** unit tests plus a 27-step browser test on the real extension, run from both the source folder and the release ZIP |
-| Companion protocol (`satchel-host.ps1`) | **Tested** under PowerShell 7 on Linux through Chromium native messaging, with a simulated Groq service |
+| Extension UI and logic in Chromium (Ask, School, Tabs, Memory, Settings) | **Tested automatically** (Linux, Playwright Chromium): unit tests plus a 36-step browser test on the real extension, run from both the source folder and the release ZIP |
+| Meetings: tab recording through the browser's tab picker | **Real browser capture, simulated picker click:** headed Chromium under Xvfb records a local page playing a 440 Hz tone, plus Chromium's fake microphone. The saved chunks decode, and their dominant frequency is ~440 Hz. Tests cover chunk rotation, the timer, the REC badge and banner, the meeting tab still playing, and stopping when the tab closes. The picker selection is automated with a Chromium test flag |
+| Meetings: one-click tab capture (`chrome.tabCapture`) | **Not tested.** Chrome only allows it after you click the Satchel icon, press Alt+Shift+S, or use the right-click menu on the meeting tab, and automation can't do that. The test confirms Satchel detects the refusal and offers the picker instead. The playback that keeps the tab audible in this mode is also untested |
+| Meetings: interruption and recovery | **Tested:** closing the recorder window, and SIGKILL of the browser followed by a relaunch, keep the saved audio (at most ~2 s lost) as an "interrupted" meeting with a playable partial chunk |
+| Meetings: import, transcription, notes | **Tested with simulated Groq:** a local WAV fixture is split into 16 kHz parts, uploaded through the real PowerShell companion as multipart (a failed part is retried alone), timestamps are shifted to the meeting timeline, the transcript is corrected, and grounded notes are generated (an invented decision is dropped). Also tested: export, search, rename, separate deletion, and no memory writes. **Not tested:** real Whisper output quality, and M4A/MP4 decoding (test Chromium has no AAC codec; branded Chrome and Edge do) |
+| Meetings: Zoom desktop app | **Not tested with a real Zoom file.** Import of Zoom's M4A relies on the browser's AAC decoder. Live capture of the Zoom desktop app isn't supported |
+| Companion protocol (`satchel-host.ps1`), including `transcribe` | **Tested** under PowerShell 7 on Linux through Chromium native messaging, with a simulated Groq service (a 10 MB chunk succeeds, 26 MB is rejected) |
 | API key never stored in the browser | **Tested:** after the browser test, every file in the Chromium profile and the companion's log folder is scanned for the key |
 | Windows installer, registry registration, `.bat` launcher, DPAPI, Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
 | Microsoft Edge | **Not tested** |
@@ -40,8 +48,9 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 extension/            The browser extension (load this folder unpacked; no build step needed)
   manifest.json       MV3 manifest with a fixed public key, so the extension ID is always
                       enhkjfoecodefiigkephlalmoebbfgmb in both Chrome and Edge
-  background/         Service worker: opens the side panel and runs school-page refreshes you start
-  sidepanel/          Side panel UI (Ask, School, Tabs, Email views)
+  background/         Service worker: side panel, school refreshes you start, REC badge, recording recovery
+  sidepanel/          Side panel UI (Ask, School, Tabs, Meetings, Email views)
+  meetings/           Recorder window (visible while recording: timer, sources, Stop)
   options/            Settings page (companion test, model choice, privacy, Google setup)
   memory/             Memory page (inspect / edit / export / import / delete)
   lib/                Modules: AI client, extractors, date parser, assignments, action validator,
@@ -64,6 +73,8 @@ npm run lint           # static checks: manifest refs, imports, syntax, no secre
 npm test               # unit tests
 npm run test:companion # real PowerShell companion over native-messaging framing (fake Groq)
 npm run test:e2e       # real extension in Chromium + real companion (fake Groq, simulated Google APIs)
+                       # on Linux run it as `xvfb-run -a npm run test:e2e`: tab-audio capture needs a headed
+                       # browser (headless still tests recording mechanics but skips the audio-content check)
 npm run test:e2e:dist  # same, but from freshly built release ZIPs (fresh-install check)
 npm run build          # dist/satchel-extension/, dist/satchel-extension.zip, dist/satchel-companion-windows.zip
 ```

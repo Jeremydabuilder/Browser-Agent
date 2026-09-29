@@ -12,7 +12,9 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'SatchelCommon.ps1')
 
-$MaxRequestBytes = 8MB
+# Large enough for one 25 MB audio chunk encoded as base64 (transcription requests).
+$MaxRequestBytes = 40MB
+$MaxAudioBytes = 25MB
 
 function Read-Exact([IO.Stream]$Stream, [int]$Count) {
     $buf = New-Object byte[] $Count
@@ -74,6 +76,39 @@ function Invoke-SatchelRequest($Request) {
             $timeout = 60
             if ($Request.timeoutSec) { $timeout = [int]$Request.timeoutSec }
             return (Invoke-GroqRequest -Method 'POST' -Path '/chat/completions' -Body $body -Key $key -TimeoutSec $timeout)
+        }
+        'transcribe' {
+            # One audio chunk -> Groq speech-to-text. Only whitelisted form fields are forwarded.
+            $model = [string]$Request.model
+            if ($model -notmatch '^[A-Za-z0-9._:/-]{1,100}$') { return (Get-ErrorReply 'bad_request' 'Invalid transcription model.') }
+            $mime = [string]$Request.mime
+            if ($mime -notmatch '^(audio|video)/[A-Za-z0-9.+-]{1,40}$') { return (Get-ErrorReply 'bad_request' 'Invalid audio type.') }
+            $fileName = [string]$Request.fileName
+            if ($fileName -notmatch '^[A-Za-z0-9._-]{1,80}\.(webm|wav|mp3|m4a|mp4|ogg|flac|mpeg|mpga|opus)$') { return (Get-ErrorReply 'bad_request' 'Invalid audio file name.') }
+            try { $audio = [Convert]::FromBase64String([string]$Request.audioBase64) } catch { return (Get-ErrorReply 'bad_request' 'Audio data is not valid base64.') }
+            if ($audio.Length -eq 0) { return (Get-ErrorReply 'bad_request' 'The audio chunk is empty.') }
+            if ($audio.Length -gt $MaxAudioBytes) { return (Get-ErrorReply 'too_large' 'This audio chunk is larger than 25 MB.') }
+            $key = Get-GroqKey
+            if (-not $key) { return (Get-ErrorReply 'no_key' 'No Groq API key is stored yet. Run "Set Groq key" from the Satchel companion folder.') }
+            Initialize-SatchelHttp
+            $form = New-Object System.Net.Http.MultipartFormDataContent
+            $fileContent = New-Object System.Net.Http.ByteArrayContent(,$audio)
+            $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($mime)
+            $form.Add($fileContent, 'file', $fileName)
+            $form.Add((New-Object System.Net.Http.StringContent($model)), 'model')
+            $form.Add((New-Object System.Net.Http.StringContent('verbose_json')), 'response_format')
+            $form.Add((New-Object System.Net.Http.StringContent('segment')), 'timestamp_granularities[]')
+            $form.Add((New-Object System.Net.Http.StringContent('0')), 'temperature')
+            $lang = [string]$Request.language
+            if ($lang -match '^[a-z]{2}$') { $form.Add((New-Object System.Net.Http.StringContent($lang)), 'language') }
+            $prompt = [string]$Request.prompt
+            if ($prompt) {
+                if ($prompt.Length -gt 800) { $prompt = $prompt.Substring($prompt.Length - 800) }
+                $form.Add((New-Object System.Net.Http.StringContent($prompt)), 'prompt')
+            }
+            $timeout = 120
+            if ($Request.timeoutSec) { $timeout = [int]$Request.timeoutSec }
+            return (Invoke-GroqRequest -Method 'POST' -Path '/audio/transcriptions' -Content $form -Key $key -TimeoutSec $timeout)
         }
         default { return (Get-ErrorReply 'unsupported' "Unsupported request type.") }
     }

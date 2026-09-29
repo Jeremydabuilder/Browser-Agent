@@ -1,0 +1,10 @@
+body { background: var(--bg); }
+.rec-wrap { padding: 12px 14px; }
+.rec-head { display: flex; align-items: center; gap: 8px; }
+.rec-head h1 { font-size: 16px; margin: 0; flex: 1; }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: #e5372b; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.timer { font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600; }
+.sources { background: var(--bg2); border-radius: 8px; padding: 6px 8px; margin: 6px 0; }
+.sources li { margin: 2px 0; }

@@ -101,6 +101,7 @@ function Invoke-GroqRequest {
         [string]$Method,
         [string]$Path,
         [string]$Body,
+        $Content = $null,
         [int]$TimeoutSec = 60,
         [string]$Key
     )
@@ -116,7 +117,9 @@ function Invoke-GroqRequest {
         $req = New-Object System.Net.Http.HttpRequestMessage($httpMethod, ((Get-GroqBaseUrl) + $Path))
         $req.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $Key)
         $req.Headers.Add('User-Agent', 'Satchel-Companion/' + $script:SatchelVersion)
-        if ($Body) {
+        if ($Content) {
+            $req.Content = $Content
+        } elseif ($Body) {
             $req.Content = New-Object System.Net.Http.StringContent($Body, [Text.Encoding]::UTF8, 'application/json')
         }
         $resp = $client.SendAsync($req).GetAwaiter().GetResult()

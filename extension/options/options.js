@@ -1,5 +1,5 @@
 import { getSettings, updateSettings } from '../lib/settings.js';
-import { ping, listModels, friendlyError } from '../lib/ai.js';
+import { ping, listModels, listTranscriptionModels, friendlyError } from '../lib/ai.js';
 import { GOOGLE_SERVICES, getConnections, connect, disconnect, disconnectAll } from '../lib/google-auth.js';
 import { listAssignments, clearAssignments } from '../lib/school.js';
 import { setItem } from '../lib/storage.js';
@@ -28,6 +28,7 @@ async function testCompanion() {
     el.className = 'status-line ok';
     el.textContent = `✓ Connected. Companion ${r.version}, key stored (${r.keyStore === 'windows-dpapi' ? 'encrypted with Windows' : r.keyStore}). ${models.length} chat models available.`;
     await fillModels(models);
+    await fillSttModels(await listTranscriptionModels());
   } catch (err) {
     el.className = 'status-line bad';
     el.textContent = friendlyError(err);
@@ -44,6 +45,16 @@ async function fillModels(models) {
     sel.append(h('option', { value: settings.model }, `${settings.model} (not currently available)`));
   }
   sel.value = settings.model;
+}
+
+async function fillSttModels(models) {
+  const settings = await getSettings();
+  const sel = $('stt-model');
+  clear(sel);
+  sel.append(h('option', { value: 'auto' }, 'Auto (recommended)'));
+  for (const m of models) sel.append(h('option', { value: m.id }, m.id));
+  if (settings.transcriptionModel !== 'auto' && !models.some((m) => m.id === settings.transcriptionModel)) sel.append(h('option', { value: settings.transcriptionModel }, `${settings.transcriptionModel} (not currently available)`));
+  sel.value = settings.transcriptionModel;
 }
 
 async function renderConnections() {
@@ -82,6 +93,10 @@ async function main() {
 
   $('test-companion').onclick = testCompanion;
   $('refresh-models').onclick = async () => { try { await fillModels(await listModels({ force: true })); toast('Model list updated.'); } catch (e) { toast(friendlyError(e), 'error'); } };
+  await fillSttModels(cached.modelCache?.transcription || []);
+  $('stt-lang').value = s.transcriptionLanguage || '';
+  $('stt-model').onchange = async (e) => { await updateSettings({ transcriptionModel: e.target.value }); toast('Speech-to-text model saved.'); };
+  $('stt-lang').onchange = async (e) => { await updateSettings({ transcriptionLanguage: e.target.value }); toast('Saved.'); };
   $('model-select').onchange = async (e) => { await updateSettings({ model: e.target.value }); toast('Model saved.'); };
   $('max-tokens').onchange = async (e) => { const n = await updateSettings({ maxInputTokens: e.target.value }); e.target.value = n.maxInputTokens; toast('Saved.'); };
   $('timeout').onchange = async (e) => { const n = await updateSettings({ requestTimeoutSec: e.target.value }); e.target.value = n.requestTimeoutSec; toast('Saved.'); };

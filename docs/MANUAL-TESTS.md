@@ -66,3 +66,21 @@ Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick ea
 - [ ] G2. Replace the key with an invalid one (`set-key.cmd`, answer “y” to save anyway). You get “Groq rejected the stored API key”.
 - [ ] G3. Settings → pick a large model and send many requests quickly. A rate-limit message appears with a wait time, or Satchel waits and retries automatically.
 - [ ] G4. Disconnect from the internet → Ask: “Could not reach Groq”.
+
+## H. Meetings (Chrome and Edge, real Groq key)
+- [ ] H1. Join a test meeting in the browser (e.g. a Google Meet with a second device, or a YouTube video standing in for a meeting). Click the **Satchel icon while that tab is showing** → Meetings. The record card names the tab. **Start is refused** until you tick the consent box.
+- [ ] H2. Tick consent (microphone off) → **Start recording**. A recorder window opens with a red dot and a running timer, the Satchel icon shows **REC**, the side panel shows a red banner, and **you can still hear the meeting** (this tests the playback path used by one-click tab capture).
+- [ ] H3. Without clicking the icon first (open the panel on another tab, then switch to the meeting tab), press Start: Satchel shows “Chrome needs one more step” → **Use the tab picker instead** → pick the tab and tick **Also share tab audio** → recording starts. Choosing a window or screen, or leaving tab audio unticked, is refused with an explanation.
+- [ ] H4. Record with **Also record my microphone**. Allow the mic: the recorder lists both sources. Repeat and **Block** the mic: recording continues with tab audio only, and a warning is shown.
+- [ ] H5. Record for **more than 6 minutes**, then Stop. The meeting has at least 2 parts (5-minute chunks), and each part plays with ▶.
+- [ ] H6. While recording, close the meeting tab: recording stops, and the meeting shows it stopped because the tab closed. The audio is kept.
+- [ ] H7. While recording, close the recorder window: the meeting shows **interrupted – audio kept**, and the audio plays up to about the moment you closed it.
+- [ ] H8. While recording, end the browser in Task Manager, then reopen it → Meetings: the meeting is **interrupted – audio kept** with its audio.
+- [ ] H9. **Transcribe with Groq…**: the consent shows minutes and MB. Cancel sends nothing. Send: parts are transcribed in order, and the transcript timestamps match the recording. Check `%LOCALAPPDATA%\Satchel\companion-errors.log` contains no transcript text or key.
+- [ ] H10. Turn Wi-Fi off halfway through transcription: the failed parts show errors, and finished parts are kept. Turn Wi-Fi on → **Retry failed parts** sends only those.
+- [ ] H11. Correct a name in the transcript → generate notes (a separate consent). The notes use the corrected name. Every decision or action item has a ⏱ link that jumps to the right line. Owners and dates appear only where people said them, with ⚠ Review where uncertain.
+- [ ] H12. Edit a note field, reload the side panel: the edit is kept. Export notes and everything as .md and .txt and open them: the Markdown timestamps link to transcript lines.
+- [ ] H13. Search for a word from the transcript and one from the notes. Rename the meeting.
+- [ ] H14. **Delete raw audio** (the transcript stays), **Delete notes** (the transcript stays), **Delete transcript**, then **Delete meeting**. The 🧠 Memory page is unchanged throughout.
+- [ ] H15. **Zoom desktop:** record a short Zoom meeting locally, then import `Documents\Zoom\<folder>\audio_only.m4a`. It imports, shows parts, and transcribes. Also try the `.mp4`. A file over 300 MB is refused with the audio-only tip.
+- [ ] H16. Import a 90-minute recording: it completes (note the decode time and memory use in Task Manager). A file over 2 hours is refused.

@@ -82,12 +82,83 @@ export async function listModels({ force = false } = {}) {
   if (!reply.ok) throw new AIError(reply.error?.code || 'companion_error', reply.error?.message || 'Could not list models');
   if (reply.status === 401) throw new AIError('bad_key', 'Groq rejected the stored API key. Run set-key.cmd in the companion folder to enter a new one.');
   if (reply.status !== 200) throw new AIError('server_error', `Groq returned HTTP ${reply.status} when listing models.`);
-  const models = (JSON.parse(reply.body).data || [])
+  const raw = JSON.parse(reply.body).data || [];
+  const models = raw
     .filter(isChatModel)
     .map((m) => ({ id: m.id, contextWindow: m.context_window || null, ownedBy: m.owned_by || '' }))
     .sort((a, b) => a.id.localeCompare(b.id));
-  await setItem('modelCache', { at: Date.now(), models });
+  const transcription = raw
+    .filter((m) => m.active !== false && /whisper/i.test(m.id))
+    .map((m) => ({ id: m.id }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  await setItem('modelCache', { at: Date.now(), models, transcription });
   return models;
+}
+
+// Speech-to-text models, preferred in this order when "Auto" is selected (checked against the live list).
+export const PREFERRED_TRANSCRIPTION_MODELS = ['whisper-large-v3-turbo', 'whisper-large-v3', 'distil-whisper-large-v3-en'];
+
+export async function listTranscriptionModels({ force = false } = {}) {
+  let cache = await getItem('modelCache', null);
+  if (force || !cache?.transcription || Date.now() - cache.at >= MODEL_CACHE_MS) {
+    await listModels({ force: true });
+    cache = await getItem('modelCache', null);
+  }
+  return cache?.transcription || [];
+}
+
+export function chooseTranscriptionModel(models, preferred = 'auto', exclude = []) {
+  const available = models.filter((m) => !exclude.includes(m.id));
+  if (preferred && preferred !== 'auto' && available.some((m) => m.id === preferred)) return preferred;
+  for (const id of PREFERRED_TRANSCRIPTION_MODELS) if (available.some((m) => m.id === id)) return id;
+  return available[0]?.id || null;
+}
+
+/**
+ * Transcribes one audio chunk through the companion (which adds the Groq key).
+ * @returns {{text, segments:[{start,end,text}], duration, model}}
+ */
+export async function transcribe({ audioBase64, mime, fileName, language = '', prompt = '' }) {
+  const settings = await getSettings();
+  const models = await listTranscriptionModels();
+  const excluded = [];
+  let model = chooseTranscriptionModel(models, settings.transcriptionModel || 'auto');
+  if (!model) throw new AIError('model_unavailable', 'Your Groq account has no speech-to-text (Whisper) models available right now.');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const reply = await callCompanion({ type: 'transcribe', model, mime, fileName, audioBase64, language: language || settings.transcriptionLanguage || '', prompt, timeoutSec: 180 });
+    const c = classify(reply);
+    if (c.kind === 'ok') {
+      const data = JSON.parse(reply.body);
+      return {
+        text: String(data.text || '').trim(),
+        segments: Array.isArray(data.segments) ? data.segments.map((s) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text || '').trim() })).filter((s) => s.text) : [],
+        duration: Number(data.duration) || null,
+        model,
+      };
+    }
+    if (c.kind === 'model_unavailable') {
+      excluded.push(model);
+      const next = chooseTranscriptionModel(await listTranscriptionModels({ force: true }), 'auto', excluded);
+      if (!next) throw new AIError('model_unavailable', `The speech-to-text model "${model}" is unavailable and no alternative was found.`);
+      model = next;
+      continue;
+    }
+    if (c.kind === 'rate_limited') {
+      throw new AIError('rate_limited', `Groq's speech-to-text limit for your account was reached${c.retryAfter ? `; try again in about ${Math.ceil(c.retryAfter / 60)} minute(s)` : ''}. Progress is saved; press Resume later.`, { retryAfter: c.retryAfter });
+    }
+    if (c.kind === 'too_long' || reply.error?.code === 'too_large') throw new AIError('too_long', 'This audio chunk is too large for Groq (25 MB limit).');
+    if (c.kind === 'timeout') throw new AIError('timeout', 'Groq took too long to transcribe this chunk. Retry it.');
+    throw new AIError(c.kind, c.message || reply.error?.message || 'Transcription failed.');
+  }
+  throw new AIError('failed', 'Transcription failed after several attempts.');
+}
+
+/** Base64 for a Blob/ArrayBuffer/Uint8Array (chunked so large chunks don't overflow the stack). */
+export async function toBase64(data) {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data instanceof ArrayBuffer ? data : await data.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 export function chooseModel(models, preferred = 'auto', exclude = []) {

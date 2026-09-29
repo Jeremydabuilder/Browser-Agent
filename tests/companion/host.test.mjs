@@ -134,3 +134,54 @@ test('the installer registers the host for both Chrome and Edge with only Satche
   const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)].map((h) => String.fromCharCode(97 + parseInt(h, 16))).join('');
   assert.match(common, new RegExp(`SatchelExtensionId = '${id}'`), 'companion trusts exactly the ID derived from the manifest key');
 });
+
+function toneWav(seconds, freq) {
+  const sr = 16000;
+  const n = sr * seconds;
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(sr, 24); buf.writeUInt32LE(sr * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * freq * i) / sr) * 10000), 44 + i * 2);
+  return buf;
+}
+
+test('transcribe uploads the audio as multipart to Groq with only whitelisted fields', { skip: !hasPwsh }, async () => {
+  const audio = toneWav(3, 500);
+  const r = await callHost({ type: 'transcribe', model: 'whisper-large-v3-turbo', mime: 'audio/wav', fileName: 'part-1.wav', audioBase64: audio.toString('base64'), language: 'en', prompt: 'Robotics club', extra: 'ignored' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.status, 200);
+  const body = JSON.parse(r.body);
+  assert.match(body.text, /demo day/);
+  assert.ok(body.segments.length >= 2);
+  const t = fake.log.transcriptions.at(-1);
+  assert.deepEqual([t.model, t.response_format, t.granularity, t.filename, t.type, t.bytes, t.language, t.prompt], ['whisper-large-v3-turbo', 'verbose_json', 'segment', 'part-1.wav', 'audio/wav', audio.length, 'en', 'Robotics club']);
+  assert.equal(fake.log.at(-1).auth, `Bearer ${FAKE_KEY}`);
+});
+
+test('transcribe validates model, type, file name, and audio before contacting Groq', { skip: !hasPwsh }, async () => {
+  const before = fake.log.transcriptions?.length || 0;
+  const base = { type: 'transcribe', model: 'whisper-large-v3', mime: 'audio/wav', fileName: 'a.wav', audioBase64: toneWav(1, 300).toString('base64') };
+  assert.equal((await callHost({ ...base, model: 'bad model; rm' })).error.code, 'bad_request');
+  assert.equal((await callHost({ ...base, mime: 'text/html' })).error.code, 'bad_request');
+  assert.equal((await callHost({ ...base, fileName: '..\\evil.exe' })).error.code, 'bad_request');
+  assert.equal((await callHost({ ...base, audioBase64: '' })).error.code, 'bad_request');
+  assert.equal((await callHost({ ...base, audioBase64: '%%%not-base64' })).error.code, 'bad_request');
+  assert.equal(fake.log.transcriptions?.length || 0, before, 'nothing was sent to Groq');
+});
+
+test('transcribe handles a realistic 10 MB chunk and rejects chunks over 25 MB', { skip: !hasPwsh }, async () => {
+  const big = toneWav(310, 700); // ~9.9 MB, like a 5-minute 16 kHz WAV part
+  const ok = await callHost({ type: 'transcribe', model: 'whisper-large-v3', mime: 'audio/wav', fileName: 'big.wav', audioBase64: big.toString('base64') });
+  assert.equal(ok.status, 200);
+  assert.equal(fake.log.transcriptions.at(-1).bytes, big.length);
+  const tooBig = Buffer.alloc(26 * 1024 * 1024, 1);
+  const r = await callHost({ type: 'transcribe', model: 'whisper-large-v3', mime: 'audio/wav', fileName: 'huge.wav', audioBase64: tooBig.toString('base64') });
+  assert.equal(r.error.code, 'too_large');
+});
+
+test('transcription rate limits come back with retry-after', { skip: !hasPwsh }, async () => {
+  fake.control.rateLimitNextTranscriptions = 1;
+  const r = await callHost({ type: 'transcribe', model: 'whisper-large-v3', mime: 'audio/webm', fileName: 'p.webm', audioBase64: Buffer.from('webmdata').toString('base64') });
+  assert.equal(r.status, 429);
+  assert.equal(String(r.retryAfter), '720');
+});

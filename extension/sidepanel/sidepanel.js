@@ -6,8 +6,10 @@ import * as askView from './views/ask.js';
 import * as schoolView from './views/school.js';
 import * as tabsView from './views/tabs.js';
 import * as emailView from './views/email.js';
+import * as meetingsView from './views/meetings.js';
+import { getItem, removeItem } from '../lib/storage.js';
 
-const views = { ask: askView, school: schoolView, tabs: tabsView, email: emailView };
+const views = { ask: askView, school: schoolView, tabs: tabsView, meetings: meetingsView, email: emailView };
 const listeners = new Set();
 
 export const app = {
@@ -70,6 +72,17 @@ async function main() {
   const hash = location.hash.replace('#', '');
   showView(views[hash] ? hash : views[initial] ? initial : 'ask');
   checkCompanion();
+  // Right-click "Record this tab with Satchel…" opens the Meetings view (it never starts recording by itself).
+  const openMeetingsIntent = async () => {
+    const intent = await getItem('meetingsIntent', null, 'session');
+    if (!intent || Date.now() - intent.at > 60000) return;
+    await removeItem('meetingsIntent', 'session');
+    await app.refreshTarget();
+    showView('meetings');
+    meetingsView.focusRecording();
+  };
+  openMeetingsIntent();
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'session' && changes.meetingsIntent?.newValue) openMeetingsIntent(); });
 }
 
 main();

@@ -111,3 +111,33 @@ test('loose JSON parsing handles code fences and surrounding text', () => {
   assert.deepEqual(parseJsonLoose('Sure! {"a":2} hope that helps'), { a: 2 });
   assert.equal(parseJsonLoose('nope'), null);
 });
+
+test('transcribe: auto picks a Whisper model from the live list and sends no key', async () => {
+  const { transcribe, listTranscriptionModels } = await import('../../extension/lib/ai.js');
+  const body = JSON.stringify({ data: [{ id: 'llama-3.3-70b-versatile', active: true }, { id: 'whisper-large-v3', active: true }, { id: 'whisper-large-v3-turbo', active: true }] });
+  companion((m) => {
+    if (m.type === 'models') return { ok: true, status: 200, body };
+    return { ok: true, status: 200, body: JSON.stringify({ text: ' Hello there. ', duration: 4.2, segments: [{ start: 0, end: 2, text: ' Hello' }, { start: 2, end: 4, text: ' there.' }, { start: 4, end: 4.2, text: ' ' }] }) };
+  });
+  assert.deepEqual((await listTranscriptionModels()).map((m) => m.id), ['whisper-large-v3', 'whisper-large-v3-turbo']);
+  const r = await transcribe({ audioBase64: 'AAAA', mime: 'audio/wav', fileName: 'part-1.wav' });
+  assert.deepEqual(r, { text: 'Hello there.', segments: [{ start: 0, end: 2, text: 'Hello' }, { start: 2, end: 4, text: 'there.' }], duration: 4.2, model: 'whisper-large-v3-turbo' });
+  const req = calls.find((c) => c.type === 'transcribe');
+  assert.deepEqual(Object.keys(req).sort(), ['audioBase64', 'fileName', 'language', 'mime', 'model', 'prompt', 'timeoutSec', 'type']);
+});
+
+test('transcribe: rate limit and removed models are handled', async () => {
+  const { transcribe } = await import('../../extension/lib/ai.js');
+  const body = JSON.stringify({ data: [{ id: 'whisper-large-v3', active: true }, { id: 'whisper-large-v3-turbo', active: true }] });
+  companion((m) => (m.type === 'models' ? { ok: true, status: 200, body } : { ok: true, status: 429, retryAfter: '720', body: '{"error":{"message":"ASH limit"}}' }));
+  await assert.rejects(transcribe({ audioBase64: 'AA', mime: 'audio/wav', fileName: 'a.wav' }), (e) => e.code === 'rate_limited' && e.retryAfter === 720 && /Progress is saved/.test(e.message));
+  setStorageBackend(createMemoryBackend());
+  companion((m) => {
+    if (m.type === 'models') return { ok: true, status: 200, body };
+    if (m.model === 'whisper-large-v3-turbo') return { ok: true, status: 404, body: '{"error":{"code":"model_not_found","message":"does not exist"}}' };
+    return { ok: true, status: 200, body: JSON.stringify({ text: 'ok', segments: [] }) };
+  });
+  assert.equal((await transcribe({ audioBase64: 'AA', mime: 'audio/wav', fileName: 'a.wav' })).model, 'whisper-large-v3');
+  companion((m) => (m.type === 'models' ? { ok: true, status: 200, body } : { ok: false, error: { code: 'too_large', message: 'too big' } }));
+  await assert.rejects(transcribe({ audioBase64: 'AA', mime: 'audio/wav', fileName: 'a.wav' }), (e) => e.code === 'too_long');
+});

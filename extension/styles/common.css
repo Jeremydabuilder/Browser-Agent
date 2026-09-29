@@ -24,6 +24,8 @@ p { margin: .4em 0; }
 .warn { color: var(--warn); background: var(--warn-soft); padding: 6px 10px; border-radius: 8px; }
 .notice { background: var(--accent-soft); padding: 6px 10px; border-radius: 8px; font-size: 13px; }
 .hidden { display: none !important; }
+/* Class rules like .btn { display: inline-flex } would otherwise override the hidden attribute. */
+[hidden] { display: none !important; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg);
   padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap; }

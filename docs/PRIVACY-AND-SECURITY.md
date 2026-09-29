@@ -12,6 +12,11 @@
 | Email content | Not stored | Only the threads you select, after the consent notice |
 | Tab titles and addresses | Not stored | Only for AI tab commands: the current window, with query strings and fragments removed |
 | Google access token | `chrome.storage.session` (memory only) | Never |
+| Meeting audio (recorded or imported) | IndexedDB in this browser profile, in parts; delete with “Delete raw audio” | Only after you approve **Send audio to Groq** for that meeting (always asked; the global “don't ask again” doesn't apply) |
+| Meeting transcripts and your corrections | IndexedDB, stored with each audio part; delete with “Delete transcript” | The corrected transcript text, only after you approve **Send transcript to Groq** for notes |
+| Meeting notes | IndexedDB, with the meeting; delete with “Delete notes” | Never (notes are generated from the transcript) |
+
+Meetings are never added to Satchel's memory. Recording starts only when you press Start, happens in a visible recorder window, and shows REC on the toolbar icon. Satchel never joins meetings, never records in the background, and captures only the chosen tab (plus your microphone if you tick it).
 
 Satchel has **no background monitoring**. The service worker only sets up the side panel and runs school-page refreshes that you start. It never records or uploads browsing history.
 
@@ -26,6 +31,9 @@ Satchel has **no background monitoring**. The service worker only sets up the si
 | `scripting` | Run the read-only page extractor on pages you ask about |
 | `activeTab` | Temporary access to the tab you invoked Satchel on |
 | `nativeMessaging` | Talk to the Windows companion that holds the Groq key |
+| `tabCapture` | Record the audio of the meeting tab you chose, only after you invoke Satchel on that tab and press Start |
+| `contextMenus` | The right-click item “Record this tab with Satchel…” (it only opens the Meetings view) |
+| `unlimitedStorage` | Keep long meeting recordings on this computer without hitting the browser's default storage quota |
 | `identity` | Opens Google's sign-in window when you click Connect. It shows no install warning and gives no access to data by itself; each Google service still needs your consent on Google's own screen. (It was optional in an earlier version, but that can't be reliably tested, so it is now a normal permission.) |
 | Site access (optional, per site) | Requested for each site the first time you ask Satchel to read it. Nothing is granted at install time. Revoke any site in the extension's Details page. |
 

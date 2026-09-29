@@ -7,7 +7,7 @@ You need:
 * Google Chrome (version 116 or newer) and/or Microsoft Edge (version 116 or newer)
 * A free Groq account for the AI: <https://console.groq.com>
 
-> **What has been tested so far (please read).** Satchel was built and tested on Linux in Chromium, with the companion running under PowerShell 7 and a simulated Groq service. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Microsoft Edge, a real Groq key, and real Google sign-in for Gmail and Classroom. This guide describes how those parts are designed to work. If a step behaves differently, run `status.cmd` and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
+> **What has been tested so far (please read).** Satchel was built and tested on Linux in Chromium, with the companion running under PowerShell 7 and a simulated Groq service. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Microsoft Edge, a real Groq key (chat or speech-to-text), real Google sign-in for Gmail and Classroom, one-click meeting-tab capture after clicking the Satchel icon, and importing a real Zoom recording. This guide describes how those parts are designed to work. If a step behaves differently, run `status.cmd` and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
 
 ---
 
@@ -106,6 +106,34 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 * **Draft reply**: the recipient and subject come from the thread itself. Type what you want to say and press **Draft** to have the AI write it, then edit freely.
 * **Review & send…** shows the recipients, subject, and complete message. Sending needs the separate “Gmail: send replies you approve” connection, plus your click on **Send email** for each message. Without the send connection, use **Copy text** and send from Gmail yourself.
 
+### Meetings
+> **Test status:** recording a browser tab, importing, transcription, and notes were tested in Chromium on Linux with a *simulated* Groq service. They have **not** yet been tried on Windows, in Edge, with a real Groq key, or with a real Zoom recording. Please run section H of [MANUAL-TESTS.md](MANUAL-TESTS.md).
+
+**Record a meeting that runs in a browser tab** (Google Meet, Zoom in the browser, Teams in the browser, and similar):
+1. Open the meeting tab. Then **click the Satchel toolbar icon while that tab is showing** (or press **Alt+Shift+S**, or right-click the page → **Record this tab with Satchel…**). Chrome and Edge only let an extension capture a tab after you invoke it on that tab.
+2. In **Meetings → Record a meeting in a browser tab**, check the title and read **What will be recorded**: the audio of that tab, plus your microphone if you tick **Also record my microphone** (wear headphones to avoid echo). Other tabs, desktop apps, your screen, and video are never captured.
+3. Tick the box confirming you've told participants and have their consent where required, then press **⏺ Start recording**.
+4. A small **recorder window** opens with a red dot, a timer, and a **Stop** button, and the Satchel icon shows **REC**. You can minimize the window, but don't close it. You keep hearing the meeting.
+   * If Satchel says **“Chrome needs one more step”**, you didn't invoke Satchel on the tab (step 1). Do that and press Start again, or choose **Use the tab picker instead**: in the browser's dialog, pick the meeting **tab** and tick **Also share tab audio**.
+5. Press **Stop** (in the recorder window or the side panel). If the meeting tab is closed, recording stops by itself and everything so far is kept.
+   * If the recorder window is closed by accident, the computer crashes, or the browser quits, audio saved up to the last ~2 seconds is kept, and the meeting shows **interrupted – audio kept**.
+   * If microphone access is denied, recording continues with the tab audio only, and the recorder says so.
+
+**Import a recording** (Meetings → Import a recording):
+* Supported: M4A, MP4 (audio track), MP3, WAV, WebM, OGG/Opus, FLAC. Limits: 300 MB and 2 hours per file, because the file is decoded inside the browser.
+* **Zoom desktop app:** Satchel can't record the Zoom app (or any desktop app) live. Record in Zoom instead (**Record → Record on this computer**). When the meeting ends, open `Documents\Zoom\<meeting folder>` and import **`audio_only.m4a`**, which is much smaller than the MP4. You can also join the meeting in the browser (Zoom's “Join from your browser” link) and record that tab.
+
+**Transcribe, review, and make notes:**
+1. Open the meeting and press **Transcribe with Groq…**. Satchel shows how many minutes and MB of audio will be sent, and sends nothing until you press **Send audio to Groq**. Parts are sent one at a time. If one fails, the others are kept; press **Retry failed parts**. If Groq's hourly audio limit is reached (on the free tier, about 2 hours of audio per hour), your progress is saved; press **Resume transcription** later. Keep the side panel open while it runs.
+2. Read the transcript and fix names or words (edits save automatically).
+3. Press **I reviewed the transcript: generate notes…**, then approve sending the transcript text. The notes have a summary, key points, decisions, action items, and open questions. Every item links to the moment in the transcript (⏱ chips).
+   * Decisions and action items appear only if the transcript actually contains them. Suggestions the AI couldn't back up are listed separately as “left out”.
+   * Owners and due dates are filled in only when someone stated them. Anything uncertain has a **⚠ Review** note.
+4. Edit any field (it saves automatically), tick action items when done, and export **Markdown** or **plain text** (notes only, transcript only, or everything).
+5. Delete separately with **Delete raw audio**, **Delete transcript**, and **Delete notes**, or delete the whole meeting. Meeting content is never added to Satchel's memory.
+
+Settings → AI model lets you choose the speech-to-text model (from the Whisper models your Groq account offers) and the meeting language.
+
 ### Memory
 * Type `/remember I prefer bullet-point summaries` in Ask, or use **Save a note to memory…** under an answer.
 * Open 🧠 **Memory** to view, search, edit, switch off (“Use in AI”), export, import, or delete memories. Memories are limited to short notes (500 characters) so whole pages or emails can't be saved as memory.
@@ -122,6 +150,10 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 | “rate limit reached” | Groq's free tier limits requests per minute. Wait the time shown, choose a smaller model in Settings, or lower “Max page text per request”. |
 | “Could not reach Groq” | Check your internet connection. Some school networks block AI services. |
 | A model disappeared | With **Auto**, Satchel picks another automatically and tells you. Otherwise pick one in Settings → Refresh list. |
+| Meetings: “Chrome needs one more step” | Click the Satchel icon while the meeting tab is showing (or right-click the page → Record this tab with Satchel…), then press Start again. Or use the tab picker. |
+| Meetings: “The shared tab has no audio” | In the picker, choose a **tab** (not a window or screen) and tick **Also share tab audio**. |
+| Meetings: import says it can't decode the file | Use Chrome or Edge (not a Chromium build without AAC), or import Zoom's `audio_only.m4a` / an MP3. |
+| Meetings: “speech-to-text limit … reached” | Groq limits audio per hour. Wait the time shown, then press **Resume transcription**; finished parts are kept. |
 | “can't be read” on a page | Browser pages (`chrome://`, `edge://`), extension stores, PDFs, and Google Docs can't be read by extensions. Copy the text into the chat instead. |
 | School refresh says “signed out” | Sign in to the school site in a normal tab, then refresh. |
 | Nothing found on a school page | Try **Import from this page** while viewing it, set the page's mode to **AI**, or add assignments manually. |

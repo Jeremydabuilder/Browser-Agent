@@ -1,13 +1,58 @@
 // Satchel background service worker.
-// Deliberately minimal: it opens the side panel and runs school-page refreshes that the user starts.
-// There is NO background monitoring of browsing: nothing runs unless the user clicks something.
+// Deliberately minimal: it opens the side panel, runs school-page refreshes that the user starts,
+// shows a "REC" badge while a meeting recording (started by the user) is running, and recovers
+// recordings interrupted by a closed recorder window or a browser restart.
+// There is NO background monitoring of browsing and no background recording: nothing runs unless
+// the user clicks something.
 import { fetchPageInBackground } from '../lib/browser.js';
+import { recoverInterrupted } from '../lib/meetings.js';
+
+const RECORD_MENU_ID = 'satchel-record-tab';
 
 // Clicking the toolbar icon opens the side panel (set on every service worker start; it is cheap).
-const openOnClick = () => chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-openOnClick();
-chrome.runtime.onInstalled.addListener(openOnClick);
-chrome.runtime.onStartup.addListener(openOnClick);
+const setup = () => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({ id: RECORD_MENU_ID, title: 'Record this tab with Satchel…', contexts: ['page', 'frame', 'video', 'audio'], documentUrlPatterns: ['http://*/*', 'https://*/*'] }, () => void chrome.runtime.lastError);
+  });
+};
+setup();
+chrome.runtime.onInstalled.addListener(setup);
+
+// After a browser restart no recorder can still be running, so any "recording" meeting was interrupted.
+chrome.runtime.onStartup.addListener(() => {
+  setup();
+  chrome.storage.session.remove('activeRecording');
+  recoverInterrupted({ force: true }).catch(() => {});
+});
+
+// If the recorder window is closed without pressing Stop, keep what was saved.
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const { activeRecording } = await chrome.storage.session.get('activeRecording');
+  if (!activeRecording || activeRecording.windowId !== windowId) return;
+  await chrome.storage.session.remove('activeRecording');
+  await recoverInterrupted({ force: true, onlyIds: [activeRecording.meetingId] }).catch(() => {});
+});
+
+// Visible indicator on the toolbar icon while recording.
+async function updateBadge() {
+  const { activeRecording } = await chrome.storage.session.get('activeRecording');
+  const on = activeRecording && (activeRecording.state === 'recording' || activeRecording.state === 'starting');
+  await chrome.action.setBadgeText({ text: on ? 'REC' : '' });
+  if (on) await chrome.action.setBadgeBackgroundColor({ color: '#e5372b' });
+  await chrome.action.setTitle({ title: on ? `Satchel – recording “${activeRecording.title || 'meeting'}”` : 'Open Satchel' });
+}
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'session' && changes.activeRecording) updateBadge(); });
+updateBadge();
+
+// Right-click → "Record this tab with Satchel…". This counts as invoking the extension on the tab,
+// which Chrome requires before an extension may capture a tab's audio. It only opens the Meetings
+// view; recording still starts only when the user presses Start there.
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== RECORD_MENU_ID || !tab?.id) return;
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  chrome.storage.session.set({ meetingsIntent: { tabId: tab.id, at: Date.now() } });
+});
 
 const handlers = {
   // Loads each school page the user chose in a background tab (using their signed-in session),

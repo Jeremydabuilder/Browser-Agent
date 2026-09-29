@@ -40,6 +40,10 @@
         <div><label for="max-tokens">Max page text per request (tokens)</label><input type="number" id="max-tokens" min="1000" max="100000" step="500"></div>
         <div><label for="timeout">Request timeout (seconds)</label><input type="number" id="timeout" min="10" max="180" step="5"></div>
       </div>
+      <div class="row">
+        <div><label for="stt-model">Speech-to-text model (meeting transcription)</label><select id="stt-model"><option value="auto">Auto (recommended)</option></select></div>
+        <div><label for="stt-lang">Meeting language</label><select id="stt-lang"><option value="">Detect automatically</option><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></div>
+      </div>
       <p class="muted small">Groq's free tier limits tokens per minute. If you see rate-limit messages often, lower the max page text or choose a smaller model. Long pages are automatically split or trimmed to fit.</p>
     </section>
 

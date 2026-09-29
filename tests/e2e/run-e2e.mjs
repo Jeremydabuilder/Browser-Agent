@@ -18,12 +18,15 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { startFakeGroq, FAKE_KEY } from '../support/fake-groq.mjs';
 import { startFixtureServer } from '../support/fixture-server.mjs';
+import { runMeetingSteps } from './meetings-steps.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const EXT_ID = 'enhkjfoecodefiigkephlalmoebbfgmb';
 const artifacts = path.join(root, 'tests/e2e/.artifacts');
 mkdirSync(artifacts, { recursive: true });
-const headless = process.env.HEADED ? false : true;
+// Headed when a display is available (e.g. under xvfb-run): headless Chromium renders no tab audio,
+// so real tab-audio capture can only be checked in a headed browser.
+const headless = process.env.HEADLESS ? true : !(process.env.HEADED || process.env.DISPLAY);
 
 if (spawnSync('pwsh', ['-v']).status !== 0) {
   console.error('pwsh (PowerShell 7) is required for the end-to-end test.');
@@ -86,12 +89,21 @@ const manifest = JSON.parse(readFileSync(path.join(extDir, 'manifest.json'), 'ut
 manifest.host_permissions = ['http://127.0.0.1/*'];
 writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-const context = await chromium.launchPersistentContext(userData, {
+const launch = () => chromium.launchPersistentContext(userData, {
   channel: 'chromium',
   headless,
   viewport: { width: 420, height: 900 },
-  args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`],
+  acceptDownloads: true,
+  permissions: ['microphone'],
+  args: [
+    `--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
+    // Meetings: let the meeting fixture page play sound, use a fake microphone, and have the browser's
+    // tab picker choose the "Meeting Fixture" tab automatically (automation cannot click the picker).
+    '--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream',
+    '--auto-select-tab-capture-source-by-title=Meeting Fixture',
+  ],
 });
+let context = await launch();
 let sw = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
 const extId = new URL(sw.url()).host;
 let panel;
@@ -531,6 +543,9 @@ await step('No Groq key is stored anywhere in browser storage', async () => {
   assert.equal(dump.includes(FAKE_KEY), false);
   assert.equal(dump.includes('gsk_'), false);
 });
+
+// ---- meetings (recording, import, transcription, notes, recovery) ----
+({ context, sw, panel } = await runMeetingSteps({ step, context, sw, panel, extId, userData, site, groq, openPanel: () => openPanel(), launch, work, artifacts, headless, storage: (a, k) => sw.evaluate(async ([ar, ke]) => (await chrome.storage[ar].get(ke))[ke], [a, k]), clickModalButton, showView: (n) => panel.click(`.tabs button[data-view="${n}"]`) }));
 
 // ---- teardown ----------------------------------------------------------------------------------
 await context.close();
