@@ -12,6 +12,7 @@ import { chat, providerLabel } from '../../lib/ai.js';
 import { getJob, isJobActive } from '../../lib/transcription-job.js';
 import { getSettings } from '../../lib/settings.js';
 import { getItem } from '../../lib/storage.js';
+import { loadPanelState, savePanelState } from '../../lib/panel-state.js';
 import { unreadableReason, getTargetTab } from '../../lib/browser.js';
 import { hostnameOf } from '../../lib/util.js';
 
@@ -42,6 +43,20 @@ export function init(container, appRef) {
 
 export async function show() {
   await recover();
+  if (!state.restored) {
+    // Reopen the meeting you were looking at last time (if it still exists).
+    state.restored = true;
+    const saved = await loadPanelState();
+    if (saved.meetingId && !state.detailId && await store.getMeeting(saved.meetingId)) state.detailId = saved.meetingId;
+  }
+  render();
+}
+
+/** Opens a meeting (or the list, with null) and remembers it for next time. */
+export function openMeeting(id) {
+  state.restored = true;
+  state.detailId = id || null;
+  savePanelState({ meetingId: state.detailId });
   render();
 }
 
@@ -231,7 +246,7 @@ async function renderResults() {
     const chunks = await store.listChunks(m.id);
     const st = transcriptStats(chunks);
     const audio = chunks.reduce((n, c) => n + (c.hasAudio ? store.dataSize(c.data) : 0), 0);
-    box.append(h('button', { class: 'mtg-row', onclick: () => { state.detailId = m.id; render(); } },
+    box.append(h('button', { class: 'mtg-row', onclick: () => { openMeeting(m.id); } },
       h('div', { class: 'mtg-title' }, m.title),
       h('div', { class: 'asg-meta' },
         h('span', {}, new Date(m.createdAt).toLocaleString()),
@@ -319,8 +334,7 @@ async function importRecording(file, title, statusEl) {
     await store.updateMeeting(meeting.id, { status: 'recorded', durationSec: r.durationSec });
     state.busy = false;
     toast(`Imported ${formatClock(r.durationSec)} of audio in ${r.chunkCount} part(s). Nothing has been sent anywhere yet.`);
-    state.detailId = meeting.id;
-    render();
+    openMeeting(meeting.id);
   } catch (err) {
     const saved = await store.listChunks(meeting.id);
     if (!saved.length) await store.deleteMeeting(meeting.id);
@@ -344,7 +358,7 @@ async function renderDetail(id, out) {
   titleInput.addEventListener('change', async () => { try { await renameMeeting(id, titleInput.value); toast('Renamed.'); } catch (e) { toast(e.message, 'error'); } });
 
   out.append(
-    h('button', { class: 'btn link small', onclick: () => { state.detailId = null; render(); } }, '← All meetings'),
+    h('button', { class: 'btn link small', onclick: () => openMeeting(null) }, '← All meetings'),
     titleInput,
     h('div', { class: 'asg-meta' }, h('span', {}, new Date(m.createdAt).toLocaleString()), m.durationSec ? h('span', { class: 'chip' }, formatClock(m.durationSec)) : null, statusChip(m),
       m.source === 'import' ? h('span', { class: 'chip' }, `file: ${m.sourceInfo?.fileName || ''}`) : h('span', { class: 'chip' }, m.captureSources?.mic ? 'tab + microphone' : 'tab audio only')),
@@ -423,7 +437,7 @@ async function renderDetail(id, out) {
   out.append(h('div', { class: 'btn-row', style: 'margin-top:16px' },
     h('button', { class: 'btn small', onclick: async () => download(safeFileName(m.title, 'md'), meetingToMarkdown(await store.getMeeting(id), (await store.getMeeting(id)).notes, (await meetingStats(id)).segments), 'text/markdown') }, 'Export everything .md'),
     h('button', { class: 'btn small', onclick: async () => download(safeFileName(m.title, 'txt'), meetingToText(await store.getMeeting(id), (await store.getMeeting(id)).notes, (await meetingStats(id)).segments)) }, 'Export everything .txt'),
-    h('button', { class: 'btn small danger', onclick: async () => { if (await confirmDialog({ title: 'Delete this meeting?', message: 'Audio, transcript and notes are all deleted from this computer.', confirmLabel: 'Delete meeting', danger: true })) { await store.deleteMeeting(id); state.detailId = null; render(); toast('Meeting deleted.'); } } }, 'Delete meeting')));
+    h('button', { class: 'btn small danger', onclick: async () => { if (await confirmDialog({ title: 'Delete this meeting?', message: 'Audio, transcript and notes are all deleted from this computer.', confirmLabel: 'Delete meeting', danger: true })) { await store.deleteMeeting(id); openMeeting(null); toast('Meeting deleted.'); } } }, 'Delete meeting')));
 }
 
 function setStatus(node) {
@@ -581,6 +595,5 @@ function renderNotes(m, segs) {
 
 /** Called when the user right-clicked "Record this tab with Satchel…". */
 export function focusRecording() {
-  state.detailId = null;
-  render();
+  openMeeting(null);
 }

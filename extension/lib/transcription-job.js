@@ -3,6 +3,7 @@
 import { runTranscription } from './transcription.js';
 import { transcribe, toBase64, friendlyError } from './ai.js';
 import { getItem, setItem } from './storage.js';
+import { getMeeting } from './meeting-store.js';
 
 const JOB_KEY = 'transcriptionJob';
 export const JOB_STALE_MS = 3 * 60 * 1000; // no progress for this long = the job died (browser closed etc.)
@@ -24,7 +25,8 @@ export async function runTranscriptionJob(meetingId, { onlyFailed = false } = {}
   if (isJobActive(current)) {
     return { alreadyRunning: true, meetingId: current.meetingId };
   }
-  const job = { meetingId, state: 'running', message: 'Starting transcription…', onlyFailed };
+  const title = (await getMeeting(meetingId).catch(() => null))?.title || 'Meeting';
+  const job = { meetingId, title, state: 'running', message: 'Starting transcription…', onlyFailed };
   await publish(job);
   // Keep the service worker awake while waiting on long provider calls.
   const keepAlive = setInterval(() => { chrome.runtime.getPlatformInfo?.(() => {}); publish({ ...job }); }, 20000);
@@ -37,10 +39,10 @@ export async function runTranscriptionJob(meetingId, { onlyFailed = false } = {}
       },
       onProgress: (p) => { job.message = p.message; job.progress = { index: p.index, total: p.total }; publish(job); },
     }, { onlyFailed });
-    await publish({ meetingId, state: 'done', result, message: '' });
+    await publish({ meetingId, title, state: 'done', result, message: '' });
     return result;
   } catch (err) {
-    await publish({ meetingId, state: 'error', message: friendlyError(err), code: err.code });
+    await publish({ meetingId, title, state: 'error', message: friendlyError(err), code: err.code });
     throw err;
   } finally {
     clearInterval(keepAlive);

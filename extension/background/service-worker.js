@@ -1,12 +1,13 @@
 // Satchel background service worker.
 // Deliberately minimal: it opens the side panel, runs school-page refreshes that the user starts,
-// shows a "REC" badge while a meeting recording (started by the user) is running, and recovers
+// shows a "REC" badge while a meeting recording (started by the user) is running, runs the meeting
+// transcription you approved (so it survives closing the side panel), and recovers
 // recordings interrupted by a closed recorder window or a browser restart.
 // There is NO background monitoring of browsing and no background recording: nothing runs unless
 // the user clicks something.
 import { fetchPageInBackground } from '../lib/browser.js';
 import { recoverInterrupted } from '../lib/meetings.js';
-import { runTranscriptionJob } from '../lib/transcription-job.js';
+import { runTranscriptionJob, JOB_STALE_MS } from '../lib/transcription-job.js';
 
 const RECORD_MENU_ID = 'satchel-record-tab';
 
@@ -35,15 +36,19 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   await recoverInterrupted({ force: true, onlyIds: [activeRecording.meetingId] }).catch(() => {});
 });
 
-// Visible indicator on the toolbar icon while recording.
+// Visible indicator on the toolbar icon, in every tab: REC while recording, "2/5" while transcribing.
 async function updateBadge() {
-  const { activeRecording } = await chrome.storage.session.get('activeRecording');
-  const on = activeRecording && (activeRecording.state === 'recording' || activeRecording.state === 'starting');
-  await chrome.action.setBadgeText({ text: on ? 'REC' : '' });
-  if (on) await chrome.action.setBadgeBackgroundColor({ color: '#e5372b' });
-  await chrome.action.setTitle({ title: on ? `Satchel – recording “${activeRecording.title || 'meeting'}”` : 'Open Satchel' });
+  const { activeRecording, transcriptionJob: job } = await chrome.storage.session.get(['activeRecording', 'transcriptionJob']);
+  const rec = activeRecording && (activeRecording.state === 'recording' || activeRecording.state === 'starting');
+  const busy = !rec && job?.state === 'running' && Date.now() - (job.updatedAt || 0) < JOB_STALE_MS;
+  const p = job?.progress;
+  await chrome.action.setBadgeText({ text: rec ? 'REC' : busy ? (p?.total ? `${p.index + 1}/${p.total}` : '…') : '' });
+  if (rec) await chrome.action.setBadgeBackgroundColor({ color: '#e5372b' });
+  else if (busy) await chrome.action.setBadgeBackgroundColor({ color: '#3558d6' });
+  await chrome.action.setTitle({ title: rec ? `Satchel – recording “${activeRecording.title || 'meeting'}”`
+    : busy ? `Satchel – transcribing “${job.title || 'meeting'}”${p?.total ? ` (part ${p.index + 1} of ${p.total})` : ''}` : 'Open Satchel' });
 }
-chrome.storage.onChanged.addListener((changes, area) => { if (area === 'session' && changes.activeRecording) updateBadge(); });
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'session' && (changes.activeRecording || changes.transcriptionJob)) updateBadge(); });
 updateBadge();
 
 // Right-click → "Record this tab with Satchel…". This counts as invoking the extension on the tab,

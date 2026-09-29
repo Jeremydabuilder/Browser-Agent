@@ -3,6 +3,8 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { installerInputsHash } from './installer-inputs.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ext = path.join(root, 'extension');
@@ -33,6 +35,16 @@ for (const f of walk(path.join(root, 'companion'))) {
   const buf = readFileSync(f);
   if (f.endsWith('.ps1') && buf.some((b) => b > 127)) problems.push(`${path.relative(root, f)} must be ASCII (Windows PowerShell 5.1 reads BOM-less files as ANSI)`);
   if (/\.(cmd|bat)$/.test(f) && !buf.includes(Buffer.from('\r\n'))) problems.push(`${f} must use CRLF line endings`);
+}
+// The committed installer must match the current extension and companion.
+const setupMeta = path.join(root, 'release/SatchelSetup.json');
+if (existsSync(setupMeta)) {
+  const meta = JSON.parse(readFileSync(setupMeta, 'utf8'));
+  const exe = path.join(root, 'release/SatchelSetup.exe');
+  if (!existsSync(exe)) problems.push('release/SatchelSetup.exe is missing (run npm run build with NSIS installed)');
+  else if (createHash('sha256').update(readFileSync(exe)).digest('hex') !== meta.sha256) problems.push('release/SatchelSetup.exe does not match release/SatchelSetup.json (run npm run build)');
+  if (meta.inputs !== installerInputsHash(root)) problems.push('release/SatchelSetup.exe is out of date: the extension or companion changed since it was built. Run npm run build (needs NSIS) and commit release/.');
+  if (meta.version !== manifest.version) problems.push(`release/SatchelSetup.exe is version ${meta.version} but the extension is ${manifest.version}`);
 }
 if (problems.length) { console.error(problems.map((p) => `✗ ${p}`).join('\n')); process.exit(1); }
 console.log(`✓ Checked ${files.length} extension files and the companion. No problems found.`);

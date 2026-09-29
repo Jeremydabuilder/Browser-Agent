@@ -79,6 +79,25 @@ if (fromDist) {
   extSource = path.join(work, 'download/satchel-extension');
   hostScript = path.join(work, 'download/satchel-companion/satchel-host.ps1');
 }
+// --from-installer runs the real Windows installer (release/SatchelSetup.exe, the one users download) under Wine, then tests the extension
+// folder and companion scripts exactly as the installer laid them down in %LOCALAPPDATA%\Satchel.
+// (The browser and PowerShell still run on Linux: Wine only checks what the installer installs.)
+const fromInstaller = process.argv.includes('--from-installer');
+if (fromInstaller) {
+  const build = spawnSync(process.execPath, [path.join(root, 'scripts/build.mjs')], { stdio: 'inherit' });
+  if (build.status !== 0) process.exit(1);
+  const wenv = { ...process.env, WINEPREFIX: path.join(work, 'wineprefix'), WINEDEBUG: '-all' };
+  for (const args of [['wineboot', '-i'], [path.join(root, 'release/SatchelSetup.exe'), '/S']]) {
+    const r = spawnSync('wine', args, { env: wenv, stdio: 'ignore', timeout: 300000 });
+    spawnSync('wineserver', ['-w'], { env: wenv });
+    if (r.status !== 0) { console.error(`wine ${args.join(' ')} failed (${r.status}). Install nsis, wine and wine32:i386.`); process.exit(1); }
+  }
+  const installed = path.join(wenv.WINEPREFIX, 'drive_c/users', process.env.USER || 'root', 'AppData/Local/Satchel');
+  const hostManifest = JSON.parse(readFileSync(path.join(installed, 'companion/com.satchel.companion.json'), 'utf8'));
+  if (hostManifest.allowed_origins[0] !== `chrome-extension://${EXT_ID}/`) { console.error('Installed companion trusts the wrong extension ID'); process.exit(1); }
+  extSource = path.join(installed, 'extension');
+  hostScript = path.join(installed, 'companion/satchel-host.ps1');
+}
 
 // Launcher equivalent to satchel-host.bat on Windows.
 const launcher = path.join(work, 'satchel-host.sh');
@@ -176,6 +195,12 @@ async function clickModalButton(page, label) {
   await btn.click();
 }
 
+async function waitFor(fn, what, timeout = 10000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) { if (await fn()) return; await new Promise((r) => setTimeout(r, 200)); }
+  throw new Error(`Timed out waiting: ${what}`);
+}
+
 async function showView(name) {
   await panel.click(`.tabs button[data-view="${name}"]`);
 }
@@ -185,7 +210,7 @@ async function storage(area, key) {
 }
 
 const browserVersion = await sw.evaluate(() => navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g).join(' '));
-console.log(`Satchel end-to-end test (${BROWSER}: ${browserVersion}, extension ${extId}, headless=${headless}, source=${fromDist ? 'release ZIPs' : 'repository folders'})`);
+console.log(`Satchel end-to-end test (${BROWSER}: ${browserVersion}, extension ${extId}, headless=${headless}, source=${fromInstaller ? 'files installed by SatchelSetup.exe (Wine)' : fromDist ? 'release ZIPs' : 'repository folders'})`);
 
 // ---- tests -----------------------------------------------------------------------------------
 await step('extension loads with the fixed ID so the companion only trusts it', async () => {
@@ -215,6 +240,56 @@ await step('side panel shows exact setup steps when a chosen provider has no key
   });
   await panel.locator('#setup-card').waitFor({ state: 'detached', timeout: 30000 });
   assert.equal(await panel.textContent('#companion-status'), 'AI: ready · Groq');
+});
+
+await step('sidebar remembers the open view, Ask scope and unsent question after closing and reopening', async () => {
+  await showView('ask');
+  await panel.click('.scope button[data-scope="none"]');
+  await panel.fill('.composer textarea', 'draft question I did not send');
+  await panel.waitForTimeout(600); // drafts are saved shortly after typing stops
+  await showView('school');
+  await panel.waitForTimeout(200);
+  await panel.close();
+  panel = await openPanel();
+  await panel.locator('.tabs button[data-view="school"][aria-selected="true"]').waitFor({ timeout: 10000 });
+  assert.equal(await panel.locator('#view-school').isHidden(), false);
+  await showView('ask');
+  assert.equal(await panel.inputValue('.composer textarea'), 'draft question I did not send');
+  assert.equal(await panel.getAttribute('.scope button[data-scope="none"]', 'aria-pressed'), 'true');
+  // The pill is painted from the cached status immediately on reopen.
+  assert.match(await panel.textContent('#companion-status'), /^AI: ready/);
+  await panel.click('.scope button[data-scope="page"]');
+  await panel.fill('.composer textarea', '');
+  await panel.waitForTimeout(600);
+  assert.deepEqual(await storage('session', 'panelDrafts'), {}, 'sent/cleared drafts are removed');
+  assert.equal(JSON.stringify(await storage('local', 'panelState')).includes('draft'), false, 'drafts never go to persistent storage');
+});
+
+await step('activity strip and toolbar badge show transcription and recording progress outside Meetings', async () => {
+  await showView('ask');
+  const setJob = (job) => sw.evaluate((j) => chrome.storage.session.set({ transcriptionJob: { ...j, updatedAt: Date.now() } }), job);
+  const badge = () => sw.evaluate(() => chrome.action.getBadgeText({}));
+  await setJob({ meetingId: 'e2e-none', title: 'Budget sync', state: 'running', message: '', progress: { index: 1, total: 5 } });
+  await panel.locator('#activity .act-row', { hasText: 'Part 2 of 5' }).waitFor({ timeout: 10000 });
+  assert.match(await panel.textContent('#activity'), /Transcribing\s*“Budget sync”/);
+  assert.equal(await panel.getAttribute('#activity .progress', 'aria-valuenow'), '20');
+  await waitFor(async () => (await badge()) === '2/5', 'badge shows 2/5');
+  await showView('meetings');
+  assert.equal(await panel.locator('#activity').isHidden(), true, 'Meetings shows its own progress instead');
+  await showView('tabs');
+  await panel.locator('#activity', { hasText: 'Budget sync' }).waitFor({ timeout: 5000 });
+  await setJob({ meetingId: 'e2e-none', title: 'Budget sync', state: 'done', message: '', result: { done: 5, failed: 0 } });
+  await panel.locator('#activity .act-row.ok', { hasText: 'Transcribed' }).waitFor({ timeout: 10000 });
+  await waitFor(async () => (await badge()) === '', 'badge cleared when done');
+  await panel.click('#activity button[aria-label="Hide"]');
+  await panel.locator('#activity').waitFor({ state: 'hidden', timeout: 5000 });
+  await sw.evaluate(() => chrome.storage.session.set({ activeRecording: { meetingId: 'e2e-rec', state: 'recording', startedAt: Date.now() - 65000, title: 'Standup', sources: {} } }));
+  await panel.locator('#activity .act-row.rec', { hasText: 'Standup' }).waitFor({ timeout: 10000 });
+  assert.match(await panel.textContent('#activity .act-timer'), /^1:0\d$/);
+  await waitFor(async () => (await badge()) === 'REC', 'badge shows REC');
+  await sw.evaluate(() => chrome.storage.session.remove(['activeRecording', 'transcriptionJob', 'activityDismissedAt']));
+  await panel.locator('#activity').waitFor({ state: 'hidden', timeout: 5000 });
+  await showView('ask');
 });
 
 await step('current page is detected and what will be sent is explained', async () => {

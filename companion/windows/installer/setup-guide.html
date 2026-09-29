@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add Satchel to your browser</title>
+<style>
+  :root { --bg: #f7f7f9; --card: #fff; --text: #1d1d22; --muted: #5d5d6a; --accent: #3558d6; --accent-soft: #e8eeff; --line: #e1e1e8; --ok: #1a7f37; --warn: #9a6700; --warn-soft: #fff4d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16161a; --card: #202027; --text: #ececf1; --muted: #a3a3b2; --accent: #8ea6ff; --accent-soft: #252c47; --line: #34343e; --ok: #56d364; --warn: #e3b341; --warn-soft: #3a3120; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .tabs { display: flex; gap: 8px; margin: 0 0 14px; }
+  .tabs button { font: inherit; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; }
+  ol.steps > li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 56px; margin: 0 0 10px; position: relative; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 600; display: grid; place-items: center; }
+  code, .copy-box { font-family: Consolas, ui-monospace, monospace; }
+  .copy-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .copy-box { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow-wrap: anywhere; user-select: all; }
+  .copy-row button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .note { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin: 16px 0; }
+  .muted { color: var(--muted); }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Add Satchel to your browser</h1>
+  <p class="lead">The Satchel companion is installed. One last step: load the extension in Chrome or Edge. It takes about a minute, and you only do it once.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-browser="edge" aria-selected="true">Microsoft Edge</button>
+    <button role="tab" data-browser="chrome" aria-selected="false">Google Chrome</button>
+  </div>
+
+  <ol class="steps">
+    <li>Open a new tab, paste this into the address bar, and press Enter:
+      <div class="copy-row"><span class="copy-box" id="ext-url">edge://extensions</span><button data-copy="ext-url">Copy</button></div>
+    </li>
+    <li><span data-for="edge">In the left menu, turn on <b>Developer mode</b>.</span><span data-for="chrome" hidden>At the top right, turn on <b>Developer mode</b>.</span></li>
+    <li>Click <b>Load unpacked</b>. In the folder window, paste this path into the address bar at the top, press Enter, then click <b>Select Folder</b>:
+      <div class="copy-row"><span class="copy-box" id="ext-dir">%LOCALAPPDATA%\Satchel\extension</span><button data-copy="ext-dir">Copy</button></div>
+      <p class="muted">Satchel appears in the list with the ID <code>enhkjfoecodefiigkephlalmoebbfgmb</code>. The companion only answers that ID.</p>
+    </li>
+    <li><span data-for="edge">Click the puzzle-piece <b>Extensions</b> button in the toolbar, then the eye icon next to Satchel to keep it visible.</span><span data-for="chrome" hidden>Click the puzzle-piece <b>Extensions</b> button in the toolbar, then the pin next to Satchel.</span></li>
+    <li><b>Close every <span class="bname">Edge</span> window and open <span class="bname">Edge</span> again.</b> This is needed once so the browser finds the companion.</li>
+    <li>Click the Satchel icon (or press <b>Alt+Shift+S</b>). The sidebar opens. When the top says <b>AI: ready · Groq</b>, you're done. If it doesn't, the sidebar shows exactly what's missing.</li>
+  </ol>
+
+  <div class="note">If a message about <b>developer mode extensions</b> appears when the browser starts, choose to keep Satchel. It appears because Satchel is loaded from this PC instead of an extension store.</div>
+
+  <h2>Good to know</h2>
+  <ul>
+    <li>You never need to start the companion. The browser starts it by itself when Satchel needs the AI, and it closes again afterwards.</li>
+    <li>Your API keys stay encrypted in <code>%LOCALAPPDATA%\Satchel</code> for your Windows account. They are never put in the browser.</li>
+    <li>Start menu → <b>Satchel</b> has shortcuts to set your Groq or OpenAI key, check the companion, reopen this guide, and uninstall.</li>
+    <li>To update Satchel, run the newer <b>SatchelSetup.exe</b>, then restart the browser.</li>
+  </ul>
+</main>
+<script>
+  // This page is opened from %LOCALAPPDATA%\Satchel\setup-guide.html, so the extension folder is next to it.
+  (function () {
+    try {
+      if (location.protocol === 'file:') {
+        var p = decodeURIComponent(location.pathname).replace(/^\/+/, '').replace(/\//g, '\\');
+        document.getElementById('ext-dir').textContent = p.replace(/[^\\]+$/, '') + 'extension';
+      }
+    } catch (e) { /* keep the %LOCALAPPDATA% form */ }
+    var names = { edge: 'Edge', chrome: 'Chrome' };
+    function pick(b) {
+      document.querySelectorAll('.tabs button').forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.browser === b)); });
+      document.querySelectorAll('[data-for]').forEach(function (el) { el.hidden = el.dataset.for !== b; });
+      document.querySelectorAll('.bname').forEach(function (el) { el.textContent = names[b]; });
+      document.getElementById('ext-url').textContent = b + '://extensions';
+    }
+    document.querySelectorAll('.tabs button').forEach(function (t) { t.addEventListener('click', function () { pick(t.dataset.browser); }); });
+    if (/Edg\//.test(navigator.userAgent)) pick('edge'); else if (/Chrome\//.test(navigator.userAgent)) pick('chrome');
+    document.querySelectorAll('[data-copy]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var text = document.getElementById(btn.dataset.copy).textContent;
+        var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { window.getSelection().selectAllChildren(document.getElementById(btn.dataset.copy)); });
+        else window.getSelection().selectAllChildren(document.getElementById(btn.dataset.copy));
+      });
+    });
+  })();
+</script>
+</body>
+</html>

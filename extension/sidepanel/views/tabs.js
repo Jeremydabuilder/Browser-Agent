@@ -6,6 +6,7 @@ import { parseTabCommand, searchTabs, findDuplicateTabs, tabsForPrompt } from '.
 import { validateAction } from '../../lib/actions.js';
 import { executeTabAction, listSavedGroups, deleteSavedGroup, renameSavedGroup } from '../../lib/tab-exec.js';
 import { chat } from '../../lib/ai.js';
+import { loadDraft, saveDraft } from '../../lib/panel-state.js';
 import { tabCommandSystemPrompt, escapeForTag } from '../../lib/prompts.js';
 import { hostnameOf } from '../../lib/util.js';
 
@@ -32,6 +33,8 @@ function buildShell() {
   clear(root);
   els.command = h('input', { type: 'text', placeholder: 'e.g. “close duplicate tabs” or “save these research tabs and close them”', 'aria-label': 'Tab command' });
   els.command.addEventListener('keydown', (e) => { if (e.key === 'Enter') runCommand(els.command.value); });
+  els.command.addEventListener('input', () => saveDraft('tabs', els.command.value));
+  loadDraft('tabs').then((d) => { if (d && !els.command.value) els.command.value = d; });
   els.search = h('input', { type: 'search', placeholder: 'Search tabs by title or address', 'aria-label': 'Search tabs' });
   els.search.addEventListener('input', () => { state.query = els.search.value; renderList(); });
   els.status = h('div');
@@ -232,6 +235,7 @@ async function runCommand(text) {
   const local = parseTabCommand(cmd, { selectedTabIds: selected, savedGroups: saved });
   if (local) {
     els.command.value = '';
+    saveDraft('tabs', '');
     return proposeAndConfirm(local, { explicit: selected });
   }
   // Ask the AI - only the current window's tab titles and site addresses are sent.
@@ -257,6 +261,7 @@ async function runCommand(text) {
     setStatus(null);
     const proposal = r.data?.action;
     els.command.value = '';
+    saveDraft('tabs', '');
     // The AI's proposal is only a suggestion: it is validated and then confirmed by the user.
     await proposeAndConfirm(proposal, { explicit: selected, fromAI: true, explanation: `Satchel understood: ${String(r.data?.explanation || '').slice(0, 200)}` });
   } catch (err) {

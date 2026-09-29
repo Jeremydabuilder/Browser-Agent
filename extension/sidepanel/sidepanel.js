@@ -1,7 +1,9 @@
 // Side panel controller: view switching, current-tab tracking, companion status.
 import { ping, listModels, providerLabel } from '../lib/ai.js';
 import { getTargetTab } from '../lib/browser.js';
-import { h, toast, openSettings } from '../lib/ui.js';
+import { h, clear, toast, openSettings } from '../lib/ui.js';
+import { loadPanelState, savePanelState } from '../lib/panel-state.js';
+import { isJobActive } from '../lib/transcription-job.js';
 import { getSettings } from '../lib/settings.js';
 import * as askView from './views/ask.js';
 import * as schoolView from './views/school.js';
@@ -60,9 +62,10 @@ function setupSteps(status) {
   switch (status.code) {
     case 'companion_missing': return {
       title: 'Finish setup: install the Satchel companion',
-      steps: ['In your Satchel download, open the companion\\windows folder.', 'Double-click install.cmd. Paste your Groq key when it asks (get one free at console.groq.com/keys).', restart, 'Open Satchel again, or press Check again.'],
+      steps: ['Run SatchelSetup.exe from your Satchel download (if Windows warns, choose More info → Run anyway). No administrator rights are needed.', 'On its last page, keep “Add my Groq key now” ticked and paste your key (free at console.groq.com/keys).', restart, 'Press Check again.'],
+      alt: 'Already ran it? Restart the browser once so it finds the companion. Using the ZIP instead? Double-click install.cmd in companion\\windows.',
     };
-    case 'companion_forbidden': return { title: 'Finish setup: re-register the companion', steps: ['Double-click install.cmd in companion\\windows again (it registers this copy of Satchel).', restart] };
+    case 'companion_forbidden': return { title: 'Finish setup: re-register the companion', steps: ['Run SatchelSetup.exe again (or install.cmd). It registers the companion for this copy of Satchel.', 'Load the extension from %LOCALAPPDATA%\\Satchel\\extension, the folder SatchelSetup.exe installs.', restart] };
     case 'companion_crashed': return { title: 'The companion could not start', steps: ['Open the Start menu → Satchel → “Satchel - Check companion”. It says what is blocking it (school laptops often block PowerShell).', 'Fix what it reports, or ask your IT admin, then press Check again.'] };
     case 'no_key': return {
       title: `Add your ${(status.missing || ['groq']).map(providerLabel).join(' and ')} key`,
@@ -74,10 +77,10 @@ function setupSteps(status) {
   }
 }
 
-function renderSetupCard(status) {
+async function renderSetupCard(status) {
+  // "Hide" lasts until the browser restarts, or until the problem changes.
+  const hidden = status.ok ? null : await getItem('setupHidden', null, 'session');
   document.getElementById('setup-card')?.remove();
-  let hidden = null;
-  try { hidden = sessionStorage.getItem('satchel.hideSetup'); } catch { /* ignore */ }
   if (status.ok || hidden === status.code) return;
   const s = setupSteps(status);
   const card = h('section', { id: 'setup-card', class: 'card setup-card', role: 'region', 'aria-label': 'Setup' },
@@ -88,7 +91,7 @@ function renderSetupCard(status) {
     h('div', { class: 'btn-row' },
       h('button', { class: 'btn small primary', onclick: async (e) => { e.target.disabled = true; e.target.textContent = 'Checking…'; const r = await checkCompanion({ force: true }); toast(r.ok ? 'AI is ready.' : r.message, r.ok ? 'info' : 'error'); } }, 'Check again'),
       h('button', { class: 'btn small', onclick: () => openSettings(status.code === 'no_key' && status.need?.includes('openai') ? 'model' : 'companion') }, 'Open setup in Settings'),
-      h('button', { class: 'btn small link', onclick: () => { try { sessionStorage.setItem('satchel.hideSetup', status.code); } catch { /* ignore */ } card.remove(); } }, 'Hide')));
+      h('button', { class: 'btn small link', onclick: () => { setItem('setupHidden', status.code, 'session'); card.remove(); } }, 'Hide')));
   document.querySelector('main').prepend(card);
 }
 
@@ -110,14 +113,75 @@ async function checkCompanion({ force = false } = {}) {
   return status;
 }
 
+let currentView = 'ask';
 function showView(name) {
+  currentView = name;
   for (const btn of document.querySelectorAll('.tabs button')) btn.setAttribute('aria-selected', String(btn.dataset.view === name));
   for (const [key, mod] of Object.entries(views)) {
     const section = document.getElementById(`view-${key}`);
     section.hidden = key !== name;
     if (key === name) mod.show?.();
   }
-  try { sessionStorage.setItem('satchel.view', name); } catch { /* ignore */ }
+  savePanelState({ view: name });
+  renderActivity();
+}
+
+// ---- Activity strip: recording and transcription progress, visible in every view and every tab.
+// (The Meetings view shows the same things in full, so the strip steps aside there.)
+const NOTICE_MS = 30 * 60 * 1000; // finished / failed notices stay up to 30 minutes unless dismissed
+let activity = { rec: null, job: null, dismissedAt: 0 };
+
+async function renderActivity() {
+  const el = document.getElementById('activity');
+  if (!el) return;
+  const got = await chrome.storage.session.get(['activeRecording', 'transcriptionJob', 'activityDismissedAt']);
+  activity = { rec: got.activeRecording || null, job: got.transcriptionJob || null, dismissedAt: got.activityDismissedAt || 0 };
+  clear(el);
+  if (currentView === 'meetings') { el.hidden = true; return; }
+  const { rec, job } = activity;
+  const openMeeting = (id) => { showView('meetings'); if (id) meetingsView.openMeeting(id); };
+  if (rec) {
+    el.append(h('div', { class: 'act-row rec', role: 'status' },
+      h('span', { class: 'rec-dot', 'aria-hidden': 'true' }),
+      h('div', { class: 'grow' }, h('b', {}, rec.state === 'recording' ? 'Recording ' : rec.state === 'stopping' ? 'Saving… ' : 'Starting… ', h('span', { class: 'act-timer' }, clock(rec.startedAt))),
+        h('div', { class: 'small ellipsis' }, rec.title || 'Meeting')),
+      h('button', { class: 'btn small', onclick: () => openMeeting(null) }, 'Open'),
+      rec.state === 'recording' ? h('button', { class: 'btn small danger', onclick: () => chrome.runtime.sendMessage({ cmd: 'meeting.stop', meetingId: rec.meetingId }).catch(() => {}) }, '■ Stop') : null));
+  }
+  if (job) {
+    const stale = Date.now() - (job.updatedAt || 0) > NOTICE_MS;
+    const dismissed = activity.dismissedAt >= (job.updatedAt || 0);
+    const dismiss = h('button', { class: 'btn small link', title: 'Hide', 'aria-label': 'Hide', onclick: async () => { await setItem('activityDismissedAt', Date.now(), 'session'); renderActivity(); } }, '✕');
+    if (isJobActive(job)) {
+      const p = job.progress;
+      const pct = p?.total ? Math.round((p.index / p.total) * 100) : 0;
+      el.append(h('div', { class: 'act-row', role: 'status' },
+        h('span', { class: 'spinner', 'aria-hidden': 'true' }),
+        h('div', { class: 'grow' }, h('b', {}, 'Transcribing '), h('span', { class: 'ellipsis' }, `“${job.title || 'Meeting'}”`),
+          h('div', { class: 'small muted' }, p?.total ? `Part ${p.index + 1} of ${p.total} · keeps going if you close the sidebar` : 'Starting…'),
+          h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) }, h('span', { style: `width:${pct}%` }))),
+        h('button', { class: 'btn small', onclick: () => openMeeting(job.meetingId) }, 'Open')));
+    } else if (job.state === 'done' && !stale && !dismissed) {
+      const r = job.result || {};
+      el.append(h('div', { class: `act-row ${r.failed ? 'warn' : 'ok'}`, role: 'status' },
+        h('div', { class: 'grow' }, h('b', {}, r.failed ? '⚠ Transcription finished with errors: ' : '✓ Transcribed: '), `“${job.title || 'Meeting'}”`,
+          r.failed ? h('div', { class: 'small' }, `${r.failed} part(s) failed. Open the meeting and press Retry failed parts.`) : null),
+        h('button', { class: 'btn small', onclick: () => openMeeting(job.meetingId) }, 'Open'), dismiss));
+    } else if ((job.state === 'error' || (job.state === 'running' && !isJobActive(job))) && !stale && !dismissed) {
+      el.append(h('div', { class: 'act-row warn', role: 'alert' },
+        h('div', { class: 'grow' }, h('b', {}, 'Transcription stopped: '), `“${job.title || 'Meeting'}”`,
+          h('div', { class: 'small' }, job.state === 'error' ? job.message : 'The browser closed while it was running. Finished parts are saved; open the meeting and press Resume.')),
+        h('button', { class: 'btn small', onclick: () => openMeeting(job.meetingId) }, 'Open'), dismiss));
+    }
+  }
+  el.hidden = !el.childNodes.length;
+}
+
+function clock(startedAt) {
+  if (!startedAt) return '';
+  const s = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const hh = Math.floor(s / 3600); const mm = Math.floor((s % 3600) / 60); const ss = s % 60;
+  return `${hh ? `${hh}:` : ''}${String(mm).padStart(hh ? 2 : 1, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
 async function main() {
@@ -133,12 +197,13 @@ async function main() {
   chrome.tabs.onUpdated.addListener((id, info) => { if (info.status === 'complete' || info.title || info.url) schedule(); });
   chrome.tabs.onRemoved.addListener(schedule);
   chrome.windows.onFocusChanged.addListener(schedule);
+  checkCompanion(); // paints the cached status right away, then re-checks only if needed
+  const saved = await loadPanelState();
   await app.refreshTarget();
-  let initial = 'ask';
-  try { initial = sessionStorage.getItem('satchel.view') || 'ask'; } catch { /* ignore */ }
   const hash = location.hash.replace('#', '');
-  showView(views[hash] ? hash : views[initial] ? initial : 'ask');
-  checkCompanion();
+  // Reopen the view you used last (a #view in the address wins, e.g. from a link).
+  showView(views[hash] ? hash : views[saved.view] ? saved.view : 'ask');
+  setInterval(() => { const t = document.querySelector('#activity .act-timer'); if (t && activity.rec) t.textContent = clock(activity.rec.startedAt); }, 1000);
   // Right-click "Record this tab with Satchel…" opens the Meetings view (it never starts recording by itself).
   const openMeetingsIntent = async () => {
     const intent = await getItem('meetingsIntent', null, 'session');
@@ -151,6 +216,7 @@ async function main() {
   openMeetingsIntent();
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && changes.meetingsIntent?.newValue) openMeetingsIntent();
+    if (area === 'session' && (changes.activeRecording || changes.transcriptionJob)) renderActivity();
     // Changing a provider in Settings changes which keys are needed.
     if (area === 'local' && changes.settings) {
       const [o, n] = [changes.settings.oldValue || {}, changes.settings.newValue || {}];

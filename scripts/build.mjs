@@ -2,9 +2,12 @@
 //   dist/satchel-extension/        folder to "Load unpacked" in Chrome/Edge
 //   dist/satchel-extension.zip     the same, zipped
 //   dist/satchel-companion-windows.zip   the Windows companion (install.cmd etc.)
-import { cpSync, rmSync, mkdirSync, readdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
+//   dist/SatchelSetup.exe          one Windows installer (companion + extension files), when makensis is available
+import { cpSync, rmSync, mkdirSync, readdirSync, statSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import zlib from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { installerFiles, installerInputsHash, toCrlf } from './installer-inputs.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,7 +55,37 @@ function zip(files, outFile) {
 
 zip(walk(extOut).map((f) => ({ name: path.join('satchel-extension', path.relative(extOut, f)), data: readFileSync(f) })), path.join(dist, 'satchel-extension.zip'));
 const compDir = path.join(root, 'companion/windows');
-const toCrlf = (buf) => Buffer.from(buf.toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8');
-zip(walk(compDir).map((f) => ({ name: path.join('satchel-companion', path.relative(compDir, f)), data: f.endsWith('.ps1') ? toCrlf(readFileSync(f)) : readFileSync(f) })), path.join(dist, 'satchel-companion-windows.zip'));
+zip(walk(compDir).filter((f) => !f.includes(`${path.sep}installer${path.sep}`)).map((f) => ({ name: path.join('satchel-companion', path.relative(compDir, f)), data: f.endsWith('.ps1') ? toCrlf(readFileSync(f)) : readFileSync(f) })), path.join(dist, 'satchel-companion-windows.zip'));
 const version = JSON.parse(readFileSync(path.join(root, 'extension/manifest.json'), 'utf8')).version;
-console.log(`✓ Built Satchel ${version}:\n  dist/satchel-extension/  (Load unpacked)\n  dist/satchel-extension.zip\n  dist/satchel-companion-windows.zip`);
+
+// ---- Windows installer (NSIS). makensis also runs on Linux/macOS, so the .exe can be built anywhere.
+function hasMakensis() {
+  try { execFileSync('makensis', ['-VERSION'], { stdio: 'ignore' }); return true; } catch { return false; }
+}
+const stage = path.join(dist, 'installer-stage');
+for (const { rel, data } of installerFiles(root)) {
+  mkdirSync(path.dirname(path.join(stage, rel)), { recursive: true });
+  writeFileSync(path.join(stage, rel), data);
+}
+
+let setupLine = '  dist/SatchelSetup.exe: SKIPPED (install NSIS, e.g. "apt install nsis" or "choco install nsis", then build again)';
+if (hasMakensis()) {
+  const exe = path.join(dist, 'SatchelSetup.exe');
+  execFileSync('makensis', ['-V2', `-DVERSION=${version}`, `-DSTAGE=${stage}`, `-DOUTFILE=${exe}`, path.join(compDir, 'installer/satchel-setup.nsi')], { stdio: 'inherit' });
+  // The committed copy that users download (with "Code > Download ZIP"), plus a fingerprint of its
+  // inputs so `npm run lint` notices when it's out of date.
+  // NSIS output embeds timestamps, so release/ is only replaced when the inputs actually changed.
+  const rel = path.join(root, 'release');
+  const metaFile = path.join(rel, 'SatchelSetup.json');
+  const inputs = installerInputsHash(root);
+  let current = null;
+  try { current = JSON.parse(readFileSync(metaFile, 'utf8')); } catch { /* none yet */ }
+  const upToDate = current?.inputs === inputs && current?.version === version && existsSync(path.join(rel, 'SatchelSetup.exe'));
+  if (!upToDate) {
+    mkdirSync(rel, { recursive: true });
+    cpSync(exe, path.join(rel, 'SatchelSetup.exe'));
+    writeFileSync(metaFile, `${JSON.stringify({ version, inputs, sha256: createHash('sha256').update(readFileSync(exe)).digest('hex') }, null, 2)}\n`);
+  }
+  setupLine = `  dist/SatchelSetup.exe  (one installer: companion + extension files + Start menu)\n  release/SatchelSetup.exe  ${upToDate ? '(already up to date, left unchanged)' : '(UPDATED: commit release/)'}`;
+}
+console.log(`✓ Built Satchel ${version}:\n  dist/satchel-extension/  (Load unpacked)\n  dist/satchel-extension.zip\n  dist/satchel-companion-windows.zip\n${setupLine}`);

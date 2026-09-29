@@ -18,11 +18,15 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 
 ## Quick start
 
-1. Download this repository (**Code → Download ZIP**), right-click the ZIP → **Properties → Unblock**, then extract it, for example to `Documents\Satchel`.
-2. **Chrome:** open `chrome://extensions`. **Edge:** open `edge://extensions`. Turn on **Developer mode**, click **Load unpacked**, and select the `extension` folder.
-3. Double-click `companion\windows\install.cmd` and paste your Groq API key from <https://console.groq.com/keys>.
-4. Restart the browser, click the Satchel toolbar icon (or press **Alt+Shift+S**), and check that the header says **AI: ready · Groq**. If anything is missing, a setup card at the top of the panel lists the exact steps.
+Satchel is a Chrome/Edge **sidebar**; there's no separate desktop app to open.
+
+1. Download this repository (**Code → Download ZIP**) and run **`release\SatchelSetup.exe`** (per-user, no admin; if SmartScreen warns, **More info → Run anyway**). It installs the companion and the extension files, registers the companion with Chrome and Edge, and adds Start menu shortcuts.
+2. On its last page, keep **Add my Groq key now** ticked and paste your key from <https://console.groq.com/keys>. It is saved encrypted for your Windows account.
+3. Follow the guide it opens: in `edge://extensions` or `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and choose `%LOCALAPPDATA%\Satchel\extension`.
+4. Restart the browser, click the Satchel toolbar icon (or press **Alt+Shift+S**), and check that the header says **AI: ready · Groq**. If anything is missing, a setup card at the top of the sidebar lists the exact steps. The AI works without starting anything.
 5. Optional: add an OpenAI key (Start menu → **Satchel - Set OpenAI key**) and choose OpenAI for chat/notes or transcription in Settings. Satchel shows an estimated cost before each OpenAI request and has a local monthly spending guard (an app-side estimate, not an OpenAI billing limit).
+
+Full guide: [docs/INSTALL-WINDOWS.md](docs/INSTALL-WINDOWS.md). Without the installer, `companion\windows\install.cmd` does the same companion setup.
 
 ## Verification status
 
@@ -30,7 +34,7 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 
 | Part | Status |
 |---|---|
-| Extension UI and logic (Ask, School, Tabs, Memory, Settings, setup card, actionable errors) | **Tested automatically** on Linux: unit tests plus a 39-step browser test on the real extension in Playwright Chromium (from the source folder and the release ZIP) and in **Microsoft Edge 154 for Linux** |
+| Extension UI and logic (Ask, School, Tabs, Memory, Settings, setup card, actionable errors, remembered sidebar state, activity strip and badge) | **Tested automatically** on Linux: unit tests plus a 41-step browser test on the real extension in Playwright Chromium (from the source folder, the release ZIP, and the files installed by `SatchelSetup.exe`) and in **Microsoft Edge 154 for Linux** |
 | Meetings: tab recording, one-click (`chrome.tabCapture` after clicking the Satchel icon on the tab) | **Untested.** Automation can't click the toolbar icon. Tests only confirm that Satchel detects Chrome's refusal and offers the picker. The playback that keeps the tab audible in this mode is untested |
 | Meetings: tab recording through the browser's tab picker | **Tested on Linux Chromium, simulated picker choice:** headed Chromium under Xvfb records a local test page playing a 440 Hz tone. The saved chunks decode, and their dominant frequency is ~440 Hz. Tests cover 5-minute chunk rotation (10 s in tests), the timer, the REC badge and banner, the page still playing, and stopping when the tab closes. **Not** verified with a real meeting site, on Windows, or in Edge |
 | Meetings: microphone | **Simulated** (Chromium's fake microphone). A real microphone, the permission prompt, and the denied-permission path in a real browser are untested |
@@ -41,7 +45,8 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 | Meetings: export, search, rename, separate deletion, no memory writes | **Tested on Linux Chromium** |
 | Companion protocol (`satchel-host.ps1`), including `transcribe` | **Tested** under PowerShell 7 on Linux through Chromium native messaging, with a simulated Groq service (a 10 MB chunk succeeds, 26 MB is rejected) |
 | API key never stored in the browser | **Tested:** after the browser test, every file in the Chromium profile and the companion's log folder is scanned for the key |
-| Windows installer, registry registration, Start menu shortcuts, `.bat` launcher, DPAPI (both keys), Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
+| `SatchelSetup.exe` (NSIS, per-user) | **Tested under Wine on Linux, not on Windows:** the real 32-bit installer's silent install, installed files, native messaging manifest, Chrome and Edge `HKCU` registry entries, Start menu shortcuts, Settings > Apps entry, upgrade (stale files removed, keys kept) and silent uninstall (keys kept). The browser test then passed using the extension folder and companion scripts it installed. **Untested on real Windows:** its pages when double-clicked, SmartScreen, the Finish-page key window and setup guide, and Chrome/Edge on Windows reading the registry entries |
+| `install.cmd`, `.bat` launcher, DPAPI (both keys), Windows PowerShell 5.1 | **Not tested** (no Windows machine was available); scripts are parse-checked only |
 | Microsoft Edge | **Tested on Linux** (Edge 154, all 39 browser steps including real tab-audio capture). Edge and Chrome on Windows are **not tested** |
 | OpenAI as an optional provider (chat/notes and transcription, separately) | **Simulated only:** unit tests cover model filtering, `whisper-1` vs `gpt-4o-mini-transcribe` formats, unsupported-parameter retries, quota (`insufficient_quota`), bad or missing key, and cost recording; companion tests confirm OpenAI requests go to the OpenAI endpoint with the OpenAI key and never reach Groq. **No real OpenAI request has been made** |
 | Cost estimates and OpenAI spending guard | **Tested with simulated responses** (the guard blocks before a request; Groq is never blocked; $0 blocks all OpenAI requests). It's an app-side estimate from an editable price table, not billing data; real charges are **untested** |
@@ -51,6 +56,7 @@ Other docs: [Google setup](docs/GOOGLE-SETUP.md) · [Privacy & security design](
 ## Repository layout
 
 ```
+release/SatchelSetup.exe   The Windows installer users download (built by `npm run build`; lint fails if it is out of date)
 extension/            The browser extension (load this folder unpacked; no build step needed)
   manifest.json       MV3 manifest with a fixed public key, so the extension ID is always
                       enhkjfoecodefiigkephlalmoebbfgmb in both Chrome and Edge
@@ -62,16 +68,18 @@ extension/            The browser extension (load this folder unpacked; no build
   lib/                Modules: AI client, extractors, date parser, assignments, action validator,
                       tabs, memory, Gmail, Classroom, Google auth, prompts, UI helpers
 companion/windows/    Windows companion: native messaging host (PowerShell) + install scripts
+  installer/          SatchelSetup.exe source (NSIS script) and the offline "add the extension" guide
 tests/unit/           Unit tests (extraction, dates, assignments, action validation, memory, AI errors, Google)
 tests/companion/      Runs the real companion under PowerShell against a fake Groq server
-tests/e2e/            Drives the real extension in Chromium with the real companion
+tests/e2e/            Drives the real extension in Chromium or Edge with the real companion
+tests/installer/      Runs SatchelSetup.exe under Wine: install, registry, shortcuts, upgrade, uninstall
 docs/                 Install, Google setup, privacy/security, manual test plan
-scripts/              check.mjs (static checks), build.mjs (zips), make-icons.mjs
+scripts/              check.mjs (static checks), build.mjs (zips + installer), installer-inputs.mjs, make-icons.mjs
 ```
 
 ## Development
 
-Requires Node.js 22+. The companion tests and end-to-end tests also need PowerShell 7 (`pwsh`).
+Requires Node.js 22+. The companion tests and end-to-end tests also need PowerShell 7 (`pwsh`). Building the installer needs NSIS (`makensis`, e.g. `apt install nsis` or `choco install nsis`); testing it on Linux also needs Wine with 32-bit support (`apt install wine wine32:i386`).
 
 ```bash
 npm install            # dev dependencies only (jsdom, playwright); the extension has no runtime deps
@@ -82,7 +90,9 @@ npm run test:e2e       # real extension in Chromium + real companion (fake Groq,
                        # on Linux run it as `xvfb-run -a npm run test:e2e`: tab-audio capture needs a headed
                        # browser (headless still tests recording mechanics but skips the audio-content check)
 npm run test:e2e:dist  # same, but from freshly built release ZIPs (fresh-install check)
-npm run build          # dist/satchel-extension/, dist/satchel-extension.zip, dist/satchel-companion-windows.zip
+npm run test:e2e:installer  # same, using the files SatchelSetup.exe installs (runs it under Wine)
+npm run test:installer # SatchelSetup.exe under Wine: files, registry, shortcuts, upgrade, uninstall
+npm run build          # dist/ zips + dist/SatchelSetup.exe, and refreshes release/SatchelSetup.exe (commit it)
 ```
 
 The end-to-end test loads the real extension into Chromium, registers the real PowerShell companion as a native messaging host, and drives the side panel through every feature area: summarize, compare, chat, school refresh, corrections, tab commands, saving and reopening tabs, Gmail review and send, Classroom import, memory, settings, and rate-limit handling. Groq is replaced by a local OpenAI-compatible fake, and Google APIs by canned HTTP responses, because a test can't use your real accounts. Screenshots are written to `tests/e2e/.artifacts/`.

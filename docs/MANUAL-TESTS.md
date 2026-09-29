@@ -1,14 +1,20 @@
 # Manual test plan (Chrome and Edge on Windows)
 
-Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick each item. Automated coverage (`npm run test:all`) exercises most of these flows in Chromium and Linux Edge, but real Groq, real OpenAI, real Google sign-in, the Windows companion install, and Chrome/Edge on Windows can only be verified by hand.
+Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick each item. Automated coverage (`npm run test:all`, plus `npm run test:installer` under Wine) exercises most of these flows in Chromium and Linux Edge, but real Groq, real OpenAI, real Google sign-in, running the installer on Windows, and Chrome/Edge on Windows can only be verified by hand.
 
-## A. Install
-- [ ] A1. Load `extension/` unpacked. The card shows ID `enhkjfoecodefiigkephlalmoebbfgmb` and no errors (click **Errors** if shown).
-- [ ] A2. Run `companion\windows\install.cmd`: registration messages for Chrome **and** Edge, key verified and saved.
-- [ ] A3. `status.cmd` shows `[ok]` for both registrations and the key, and lists Groq models.
-- [ ] A3b. Start menu → **Satchel** has four shortcuts (Set Groq key, Set OpenAI key, Check companion, Uninstall companion), and each opens a working window.
-- [ ] A4. Restart the browser. Click the toolbar icon: the side panel opens and the header shows **AI: ready · Groq**. **Alt+Shift+S** also opens it. Close and reopen the panel: the pill appears immediately (cached for 10 minutes) instead of “checking…”.
-- [ ] A4b. **Before** installing the companion (or after uninstalling it), open the panel: a setup card lists the exact install steps with **Check again**. After installing and restarting, **Check again** turns the pill green and the card disappears.
+## A. Install (SatchelSetup.exe) — needs real Windows
+Automated so far: the installer was run silently **under Wine on Linux** (files, registry, shortcuts, upgrade, uninstall). Everything below is what Wine can't show.
+
+- [ ] A0. Start with no Satchel installed. Open the sidebar of an already-loaded copy (if any): the setup card says “Install the Satchel companion” and names `SatchelSetup.exe`.
+- [ ] A1. Download the repository ZIP and double-click `release\SatchelSetup.exe`. Note exactly what SmartScreen shows (“More info → Run anyway” expected). No administrator (UAC) prompt appears.
+- [ ] A2. Welcome → Install: the log shows “PowerShell can run the companion” (or the restricted-PowerShell warning on a locked-down PC; note which). Finish page has both boxes ticked.
+- [ ] A3. Finish with both boxes ticked: a PowerShell window asks for the Groq key, checks it (“Key verified and saved”), and waits for a key press; the setup guide opens in the default browser, and its **Copy** buttons work. The folder path it shows is your real `%LOCALAPPDATA%\Satchel\extension`.
+- [ ] A3b. Start menu → **Satchel** has five shortcuts (Add the extension to Chrome or Edge, Set Groq key, Set OpenAI key, Check companion, Uninstall) and each opens the right window. **Check companion** shows `[ok]` for both registrations and the key, and lists Groq models.
+- [ ] A3c. Following the guide in **Edge** and then **Chrome**: Load unpacked `%LOCALAPPDATA%\Satchel\extension` works; the card shows ID `enhkjfoecodefiigkephlalmoebbfgmb` and no errors.
+- [ ] A4. Restart the browser. Click the toolbar icon: the sidebar opens and the header shows **AI: ready · Groq** without starting anything by hand. **Alt+Shift+S** also opens it. Close and reopen the sidebar: the pill appears immediately (cached for 10 minutes).
+- [ ] A4b. Settings → Apps lists **Satchel (browser extension and companion)**. Run the installer a second time (upgrade): the Finish page says a Groq key is already stored and leaves that box unticked; after a browser restart, Satchel still works and settings/meetings are kept.
+- [ ] A4c. Uninstall from Settings → Apps: it asks whether to delete keys (answer No), then tells you to remove the extension in the browser. The Start menu folder and both registry keys (`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.satchel.companion`, `...\Microsoft\Edge\...`) are gone; `groq-key.dat` is still in `%LOCALAPPDATA%\Satchel`. The sidebar now shows the install setup card. Reinstall afterwards.
+- [ ] A4d. Alternative path: on a second Windows account, use `companion\windows\install.cmd` from the extracted ZIP instead. It still works and uses the same folders.
 - [ ] A5. Settings → **Test connection** says Connected and fills the model list. Pick a model, reload Settings, and the choice is kept.
 - [ ] A6. Search `%LOCALAPPDATA%\Satchel` and the extension folder for your key text: it must not appear in plain text anywhere.
 
@@ -64,10 +70,12 @@ Run this checklist in **Google Chrome** and again in **Microsoft Edge**. Tick ea
 - [ ] F5. **Clear chat** empties the chat and memories remain. Restart the browser: chat is empty, memories remain.
 
 ## G. Failure handling
-- [ ] G1. Run `uninstall.cmd` (keep the key) and restart the browser. The header says **AI: not set up**, and Ask shows “companion is not installed…”. School manual entry, Tabs, and Memory still work. Reinstall afterwards.
-- [ ] G2. Replace the key with an invalid one (`set-key.cmd`, answer “y” to save anyway). You get “Groq rejected the stored API key”.
+- [ ] G1. Uninstall (Start menu → Satchel - Uninstall, keep the keys) and restart the browser. The header says **AI: not set up**, and Ask shows “companion is not installed…”. School manual entry, Tabs, and Memory still work. Reinstall afterwards.
+- [ ] G2. Replace the key with an invalid one (Start menu → Satchel - Set Groq key, answer “y” to save anyway). You get “Groq rejected the stored API key”.
 - [ ] G3. Settings → pick a large model and send many requests quickly. A rate-limit message appears with a wait time, or Satchel waits and retries automatically.
 - [ ] G4. Disconnect from the internet → Ask: “Could not reach Groq”, with a **Try again** button that works after reconnecting.
+- [ ] G4b. Sidebar memory: switch to School, type a question in Ask without sending, close the sidebar and reopen it: School is shown and the question is still there. Restart the browser: the section is remembered, the unsent question is gone (drafts last only until the browser closes).
+- [ ] G4c. Start a transcription of a 10-minute meeting, switch to Ask and to other browser tabs: the strip under the sidebar tabs shows “Part N of M” with a progress bar, and the toolbar icon shows N/M in every tab. When it finishes, the strip says “✓ Transcribed” and **Open** jumps to the meeting.
 - [ ] G5. Every AI error in Ask, Tabs, School, Email and Meetings shows a next step (a Settings button or numbered steps), not just a message. A rate-limit error shows a **Try again in Ns** countdown.
 
 ## I. OpenAI (optional provider, real OpenAI key with billing)

@@ -2,7 +2,7 @@
   "name": "satchel-browser-assistant",
   "version": "1.0.0",
   "private": true,
-  "description": "Satchel: a Manifest V3 side-panel assistant for Chrome and Edge with a Windows companion for Groq.",
+  "description": "Satchel: a Manifest V3 sidebar assistant for Chrome and Edge, with a Windows companion and installer for the AI keys.",
   "type": "module",
   "scripts": {
     "test": "node --test \"tests/unit/*.test.mjs\"",
@@ -12,7 +12,9 @@
     "lint": "node scripts/check.mjs",
     "build": "node scripts/build.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "test:e2e:dist": "node tests/e2e/run-e2e.mjs --from-dist"
+    "test:e2e:dist": "node tests/e2e/run-e2e.mjs --from-dist",
+    "test:installer": "node --test tests/installer/installer.test.mjs",
+    "test:e2e:installer": "node tests/e2e/run-e2e.mjs --from-installer"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.5",

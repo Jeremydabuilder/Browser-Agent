@@ -1,6 +1,8 @@
 # Installing and using Satchel on Windows
 
-This guide assumes no programming experience. It takes about 10 minutes, plus about 10 more if you want Gmail or Google Classroom.
+This guide assumes no programming experience. It takes about 5 minutes, plus about 10 more if you want Gmail or Google Classroom.
+
+Satchel is a **sidebar in Chrome or Edge**. There's no separate app to open: click the Satchel icon in the browser toolbar (or press **Alt+Shift+S**) and it opens next to the page. A small helper called the **companion** keeps your AI key encrypted on your PC. The browser starts it by itself whenever Satchel needs the AI, so there's nothing to start or keep running.
 
 You need:
 * Windows 10 or 11
@@ -8,70 +10,76 @@ You need:
 * A free Groq account for the AI: <https://console.groq.com>
 * Optional: an OpenAI account with billing, if you want to use OpenAI for chat/notes or transcription
 
-> **What has been tested so far (please read).** Satchel was tested on Linux in Chromium and in Microsoft Edge 154 for Linux, with the companion running under PowerShell 7 and **simulated** Groq and OpenAI services. **None of the following has been tried yet:** the Windows installer (`install.cmd`, registry registration, Start menu shortcuts, the `.bat` launcher, DPAPI key encryption, Windows PowerShell 5.1), Chrome or Edge on Windows, a real Groq key or a real OpenAI key (chat or speech-to-text, and therefore real costs), real Google sign-in for Gmail and Classroom, one-click meeting-tab capture after clicking the Satchel icon, and importing a real Zoom recording (a generated Zoom-style M4A/MP4 was imported in Linux Edge). This guide describes how those parts are designed to work. If a step behaves differently, run Start menu → Satchel - Check companion (or `status.cmd`) and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist for confirming each part.
+> **What has been tested so far (please read).** Satchel was tested on Linux in Chromium and in Microsoft Edge 154 for Linux, with the companion running under PowerShell 7 and **simulated** Groq and OpenAI services. The installer `SatchelSetup.exe` was **run under Wine on Linux** (a Windows compatibility layer, not real Windows): its silent install, files, registry entries, Start menu shortcuts, upgrade and uninstall were checked, and the browser test passed using the files it installed. **Not tried yet on real Windows:** running `SatchelSetup.exe` by double-clicking (its pages, the SmartScreen warning, the key window it opens), the companion under Windows PowerShell 5.1 with DPAPI key encryption, Chrome or Edge on Windows finding the companion, a real Groq or OpenAI key, real Google sign-in, one-click meeting-tab capture, and a real Zoom recording. If a step behaves differently, run Start menu → Satchel → **Satchel - Check companion** and note the exact message. [MANUAL-TESTS.md](MANUAL-TESTS.md) is the checklist.
 
 ---
 
-## 1. Download Satchel
-
-1. On the GitHub page for this repository, click **Code → Download ZIP**. (If you were given the built files instead, use `satchel-extension.zip` and `satchel-companion-windows.zip`.)
-2. In your Downloads folder, **right-click the ZIP → Properties**. If there's an **Unblock** checkbox at the bottom, tick it and click **OK**. This stops Windows from blocking the setup scripts.
-3. Right-click the ZIP → **Extract All…** and pick a permanent place, for example `C:\Users\<you>\Documents\Satchel`.
-   *Don't delete this folder later.* The browser loads the extension from it.
-
-## 2. Add the extension to your browser
-
-**Google Chrome**
-1. Type `chrome://extensions` in the address bar and press Enter.
-2. Turn on **Developer mode** (top-right switch).
-3. Click **Load unpacked** and select the **`extension`** folder inside your Satchel folder. (If you downloaded the built zip, select the `satchel-extension` folder.)
-4. Click the puzzle-piece icon in the toolbar and **pin** Satchel so its icon stays visible.
-
-**Microsoft Edge**
-1. Type `edge://extensions` in the address bar and press Enter.
-2. Turn on **Developer mode** (left side, near the bottom).
-3. Click **Load unpacked** and select the same **`extension`** folder.
-4. Click the puzzle-piece icon and click the eye icon next to Satchel to show it in the toolbar.
-
-Both browsers show Satchel's ID as `enhkjfoecodefiigkephlalmoebbfgmb`. If a different ID appears, you loaded the wrong folder.
-
-> Edge may occasionally show a banner saying developer-mode extensions are on. That's normal for extensions you load yourself; you can dismiss it.
-> **School-managed computers or browser profiles** may not allow Developer mode or unpacked extensions. If the switch is greyed out, use a personal browser profile or computer.
-
-## 3. Get your Groq API key
+## 1. Get your Groq API key
 
 1. Go to <https://console.groq.com/keys> and sign in (Google sign-in works).
 2. Click **Create API Key**, give it a name like `Satchel`, and **copy** the key (it starts with `gsk_`).
-   Keep it private, like a password. You'll paste it into the companion in the next step, and nowhere else.
+   Keep it private, like a password. You'll paste it into Satchel's key window in the next step, and nowhere else.
 
-## 4. Install the Satchel companion (stores your key securely)
+## 2. Run the Satchel installer
 
-The companion is a small helper that lets the extension use Groq without the key ever being inside the browser.
+1. On the GitHub page for this repository, click **Code → Download ZIP**, open the ZIP, and open the **`release`** folder.
+2. Double-click **`SatchelSetup.exe`** (you can run it straight from the ZIP).
+   * Windows may show **“Windows protected your PC”** because the installer isn't code-signed. Click **More info → Run anyway**.
+   * It installs **for your Windows account only**, so it doesn't ask for administrator rights.
+3. Click **Next**, then **Install**. It:
+   * installs the companion and the Satchel extension files to `%LOCALAPPDATA%\Satchel`;
+   * registers the companion with Chrome and Edge (so only Satchel's extension ID can talk to it);
+   * adds a **Start menu → Satchel** folder and an entry in **Settings → Apps** for uninstalling;
+   * warns you if PowerShell is locked down on this PC (common on school laptops), because the companion needs it.
+4. On the last page keep both boxes ticked and click **Finish**:
+   * **Add my Groq key now** opens a small window. Paste your key (right-click or Ctrl+V; the characters are hidden on purpose) and press **Enter**. It checks the key with Groq and saves it **encrypted for your Windows account** (Windows DPAPI). You'll see “Key verified and saved”.
+   * **Show me how to add the extension** opens a one-page guide in your browser, with copy buttons for the two things you need to paste. It's the same as step 3 below.
 
-1. Open your Satchel folder → **companion** → **windows**.
-2. Double-click **`install.cmd`**.
-   * If Windows shows **“Windows protected your PC”**, click **More info → Run anyway**.
-3. When it asks for the key, **paste it** (right-click or Ctrl+V; the characters are hidden on purpose) and press **Enter**.
-4. It checks the key with Groq and saves it **encrypted for your Windows account** (Windows DPAPI). You'll see “Key verified and saved”.
-5. It then asks whether you also want to add an **OpenAI key**. This is optional: press **Enter** to skip (you can add one later, see [Optional: OpenAI](#optional-use-openai-for-some-tasks)).
-6. **Close every Chrome/Edge window and reopen the browser** (needed once so the browser finds the companion).
+## 3. Add the extension to Chrome or Edge (one time)
 
-There's nothing to start at login: the browser launches the companion automatically when Satchel needs it, and it closes again after each request.
+Browsers only let you add an extension that isn't from their store by loading it yourself. You do this once.
 
-**Check it:** click the Satchel icon. The header should say **AI: ready · Groq** (green).
-If something is missing, a **setup card** at the top of the side panel says exactly what to do (for example “Install the Satchel companion” with the three steps, or “Add your Groq key”), with a **Check again** button. Pages, tabs and memory keep working while AI is not set up. For details, open ⚙️ Settings → **Companion** and press **Test connection**: it shows which keys are stored, and **AI providers** shows the provider and model each task will use.
+1. Open a new tab, type **`edge://extensions`** (Edge) or **`chrome://extensions`** (Chrome), and press Enter.
+2. Turn on **Developer mode** (Edge: in the left menu; Chrome: top-right switch).
+3. Click **Load unpacked**. In the folder window, paste **`%LOCALAPPDATA%\Satchel\extension`** into the address bar at the top, press Enter, and click **Select Folder**.
+4. Satchel appears with the ID `enhkjfoecodefiigkephlalmoebbfgmb`. Click the puzzle-piece **Extensions** button in the toolbar and pin Satchel (Chrome: pin; Edge: eye icon), so its icon stays visible.
+5. **Close every browser window and open the browser again** (needed once so it finds the companion).
 
-The installer also adds a **Start menu → Satchel** folder, so you never have to find the download folder again:
-| Start menu shortcut | Same as (in `companion\windows`) | Use |
-|---|---|---|
-| Satchel - Set Groq key | `set-key.cmd` | Add or replace your Groq key |
-| Satchel - Set OpenAI key | `set-openai-key.cmd` | Add or replace your optional OpenAI key |
-| Satchel - Check companion | `status.cmd` | Diagnose: registration, each key's status, whether the providers are reachable, and whether PowerShell is restricted |
-| Satchel - Uninstall companion | `uninstall.cmd` | Remove the companion (asks about each key) |
+> Edge or Chrome may show a message about developer-mode extensions. That's normal for an extension loaded from your PC; keep Satchel on.
+> **School-managed computers or browser profiles** may not allow Developer mode or unpacked extensions. If the switch is greyed out, use a personal browser profile or computer.
 
-Run `install.cmd` again any time to repair the companion.
+Forgot a step? Start menu → Satchel → **Satchel - Add the extension to Chrome or Edge** reopens the guide.
 
-The companion is copied to `%LOCALAPPDATA%\Satchel\companion`. The encrypted keys are `%LOCALAPPDATA%\Satchel\groq-key.dat` and (if you add one) `openai-key.dat`. Only your Windows account can decrypt them. Keys are never stored in the browser, in logs, or in the repository.
+## 4. Check that it works
+
+Click the Satchel icon. The sidebar opens and its header says **AI: ready · Groq** (green).
+
+If something is missing, a **setup card** at the top of the sidebar says exactly what to do (for example “Install the Satchel companion” or “Add your Groq key”), with **Check again**. Pages, tabs and memory keep working while AI is not set up. For details, open ⚙️ Settings → **Companion** and press **Test connection**: it shows which keys are stored, and **AI providers** shows the provider and model each task will use.
+
+There's nothing to start at login. The browser starts the companion when Satchel needs the AI, and it closes again after each request.
+
+**Start menu → Satchel:**
+| Shortcut | Use |
+|---|---|
+| Satchel - Add the extension to Chrome or Edge | Reopens the step-by-step guide |
+| Satchel - Set Groq key | Add or replace your Groq key |
+| Satchel - Set OpenAI key | Add or replace your optional OpenAI key |
+| Satchel - Check companion | Diagnose: registration, each key's status, whether the providers are reachable, and whether PowerShell is restricted |
+| Satchel - Uninstall | Remove Satchel's files and registration (asks whether to delete your keys) |
+
+Files: the companion is in `%LOCALAPPDATA%\Satchel\companion` and the extension in `%LOCALAPPDATA%\Satchel\extension`. The encrypted keys are `%LOCALAPPDATA%\Satchel\groq-key.dat` and (if you add one) `openai-key.dat`. Only your Windows account can decrypt them. Keys are never stored in the browser, in logs, in the installer, or in the repository.
+
+<details>
+<summary>Alternative without the installer: install.cmd</summary>
+
+If you can't run `SatchelSetup.exe` (for example, your PC blocks unsigned installers), use the scripts instead:
+
+1. Download the ZIP, right-click it → **Properties** → tick **Unblock** → **OK**, then **Extract All…** to a permanent folder such as `Documents\Satchel` (don't delete it later).
+2. Double-click `companion\windows\install.cmd`, paste your Groq key when asked, and optionally an OpenAI key.
+3. Load the **`extension`** folder of your extracted copy in Chrome or Edge as in step 3 above, then restart the browser.
+
+`install.cmd` and `SatchelSetup.exe` use the same companion folder, key files and Start menu folder, so you can switch from one to the other.
+</details>
 
 ## Optional: use OpenAI for some tasks
 
@@ -89,7 +97,11 @@ Groq stays the default for everything. You can switch **chat and notes** (Ask, s
 
 ## 5. Using Satchel
 
-Open Satchel by clicking its toolbar icon or pressing **Alt+Shift+S**. It opens in the side panel and stays open while you browse.
+Open Satchel by clicking its toolbar icon or pressing **Alt+Shift+S**. It opens in the sidebar and stays open while you switch tabs.
+
+* **It remembers where you were.** Close and reopen the sidebar (or restart the browser) and it comes back to the same section, the same Ask mode (This page / Selected tabs / No page), and the meeting you had open. A question or tab command you were typing but didn't send is kept until you close the browser.
+* **Progress follows you.** While a meeting records or transcribes, a strip under the section tabs shows it in every section (timer and **Stop** for recording; a progress bar and “Part 2 of 5” for transcription), and the Satchel toolbar icon shows **REC** or **2/5** in every browser tab. Press **Open** to jump to the meeting. When a transcription finishes or stops, the strip says so.
+* **Setup and errors are explained in place.** If something needs doing, the sidebar shows the exact steps and a button to fix it.
 
 ### Ask (pages and research)
 * **This page → 📝 Summarize page**, or type a question about the page and press Enter.
@@ -181,9 +193,11 @@ Error messages in the side panel now include the next step: numbered steps, a bu
 
 | Problem | Fix |
 |---|---|
-| Header says **AI: not set up** / “companion is not installed” | Follow the setup card at the top of the side panel: run `install.cmd`, then close **all** browser windows and reopen. |
-| “installed for a different extension ID” | You loaded a copy with a different ID. Load the `extension` folder from this repository, or run `install.cmd` again. |
-| “companion could not start” | Start menu → **Satchel - Check companion** (or `status.cmd`). School-managed PCs sometimes block PowerShell scripts; the rest of Satchel still works, but AI features won't. |
+| “Windows protected your PC” when starting `SatchelSetup.exe` | The installer isn't code-signed. Click **More info → Run anyway**. If there is no Run anyway button, your PC blocks unsigned programs: use the `install.cmd` alternative in section 4. |
+| The installer warns that PowerShell looks restricted | Your PC (often a school laptop) limits PowerShell, which the companion needs. Everything except AI still works. Run **Satchel - Check companion** for details, or ask your IT admin. |
+| Header says **AI: not set up** / “companion is not installed” | Follow the setup card at the top of the sidebar: run `SatchelSetup.exe`, then close **all** browser windows and reopen. |
+| “installed for a different extension ID” | You loaded a different copy of the extension. Remove it in `edge://extensions` / `chrome://extensions` and load `%LOCALAPPDATA%\Satchel\extension` instead, or run `SatchelSetup.exe` again. |
+| “companion could not start” | Start menu → **Satchel - Check companion**. School-managed PCs sometimes block PowerShell scripts; the rest of Satchel still works, but AI features won't. |
 | “Groq rejected the stored API key” / “OpenAI rejected…” | Start menu → **Satchel - Set Groq key** / **Set OpenAI key** with a new key. |
 | “No OpenAI key is stored” | You chose OpenAI for a task. Add the key (Start menu → Satchel - Set OpenAI key), or switch the task back to Groq in Settings → AI providers. |
 | “Your OpenAI account has no credit or quota left” | Add billing or credit in your OpenAI account, or switch the task to Groq. Satchel doesn't retry this. |
@@ -201,5 +215,6 @@ Error messages in the side panel now include the next step: numbered steps, a bu
 
 ## 7. Updating and removing
 
-* **Update:** replace the Satchel folder with the new version, then click the **↻ reload** icon on Satchel's card in `chrome://extensions` / `edge://extensions`. Run `install.cmd` again if the companion changed. Your data and key are kept.
-* **Remove:** click **Remove** on the extension card (this deletes Satchel's browser data), then Start menu → **Satchel - Uninstall companion** (or `companion\windows\uninstall.cmd`; it asks whether to delete each key). Also delete the keys at console.groq.com / platform.openai.com if you no longer need them.
+* **Update:** run the newer `SatchelSetup.exe`, then restart the browser (or click **↻ reload** on Satchel's card in `edge://extensions` / `chrome://extensions`). You don't need to load the extension again. Your keys, settings, assignments, memories and meetings are kept.
+* **Remove:** click **Remove** on Satchel's card in `edge://extensions` / `chrome://extensions` (this deletes Satchel's browser data: settings, assignments, memories and meetings). Then uninstall the rest from **Settings → Apps → Satchel** or Start menu → Satchel → **Satchel - Uninstall**. It asks whether to delete your stored keys (the default keeps them). Also delete the keys at console.groq.com / platform.openai.com if you no longer need them.
+* Used `install.cmd` instead? Run `companion\windows\uninstall.cmd` to remove it.

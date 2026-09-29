@@ -131,3 +131,14 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .setup-card ol { margin: 4px 0 6px; padding-left: 20px; }
 .setup-card li { margin-bottom: 3px; }
 
+
+/* Activity strip (recording / transcription), shown in every view except Meetings */
+.activity { border-bottom: 1px solid var(--border); background: var(--bg2); padding: 6px 12px; display: flex; flex-direction: column; gap: 6px; }
+.act-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.act-row .grow { flex: 1; min-width: 0; }
+.act-row.warn { color: var(--warn); }
+.act-row.ok { color: var(--ok); }
+.act-row .spinner { flex: none; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress { height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }

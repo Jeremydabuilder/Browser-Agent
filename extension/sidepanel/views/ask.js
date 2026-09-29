@@ -3,7 +3,8 @@
 import { h, clear, toast, errorBox, confirmSendToAI, renderGroundedAnswer, renderRichText, saveMemoryDialog, spinner } from '../../lib/ui.js';
 import { readTab, requestSiteAccess, unreadableReason } from '../../lib/browser.js';
 import { runGroundedTask, describeOutgoing, buildSources } from '../../lib/research.js';
-import { chat } from '../../lib/ai.js';
+import { chat, providerLabel } from '../../lib/ai.js';
+import { loadPanelState, savePanelState, loadDraft, saveDraft } from '../../lib/panel-state.js';
 import { getSettings } from '../../lib/settings.js';
 import { addMemory, memoriesForAI, getConversation, appendConversation, clearConversation } from '../../lib/memory.js';
 import { generalChatSystemPrompt } from '../../lib/prompts.js';
@@ -11,7 +12,7 @@ import { hostnameOf } from '../../lib/util.js';
 
 let root;
 let app;
-const state = { scope: 'page', selected: new Set(), tabs: [], busy: false };
+const state = { scope: 'page', selected: new Set(), tabs: [], busy: false, provider: 'Groq' };
 let els = {};
 
 export function init(container, appRef) {
@@ -20,6 +21,29 @@ export function init(container, appRef) {
   render();
   app.onTargetTab(() => { updateContextLine(); if (state.scope === 'tabs') loadTabs(); });
   restoreConversation();
+  restoreState();
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.settings) refreshProvider();
+  });
+}
+
+// Brings back the scope and the unsent question from last time.
+async function restoreState() {
+  refreshProvider();
+  const saved = await loadPanelState();
+  if (['page', 'tabs', 'none'].includes(saved.askScope) && saved.askScope !== state.scope) setScope(saved.askScope, { remember: false });
+  const draft = await loadDraft('ask');
+  if (draft && !els.input.value) { els.input.value = draft; updateOutgoing(); }
+}
+
+async function refreshProvider() {
+  state.provider = providerLabel((await getSettings()).chatProvider);
+  updateOutgoing();
+}
+
+function clearInput() {
+  els.input.value = '';
+  saveDraft('ask', '');
 }
 
 export function show() {
@@ -38,7 +62,7 @@ function render() {
   els.log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
   els.input = h('textarea', { rows: 2, placeholder: 'Ask about this page…', 'aria-label': 'Your question' });
   els.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-  els.input.addEventListener('input', updateOutgoing);
+  els.input.addEventListener('input', () => { updateOutgoing(); saveDraft('ask', els.input.value); });
   els.outgoing = h('div', { class: 'outgoing' });
   els.send = h('button', { class: 'btn primary', onclick: () => send() }, 'Send');
   root.append(
@@ -51,8 +75,9 @@ function render() {
   updateContextLine();
 }
 
-function setScope(scope) {
+function setScope(scope, { remember = true } = {}) {
   state.scope = scope;
+  if (remember) savePanelState({ askScope: scope });
   for (const b of els.scope.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.scope === scope));
   els.picker.hidden = scope !== 'tabs';
   els.input.placeholder = scope === 'page' ? 'Ask about this page…' : scope === 'tabs' ? 'Ask a research question across the selected tabs…' : 'Ask anything (no page is shared)…';
@@ -96,9 +121,10 @@ function updateOutgoing() {
   if (!els.outgoing) return;
   const t = app.targetTab;
   let text = '';
-  if (state.scope === 'page') text = t ? `Sends to Groq: your question + text of "${(t.title || hostnameOf(t.url)).slice(0, 40)}"` : '';
-  else if (state.scope === 'tabs') text = `Sends to Groq: your question + text of ${state.selected.size} selected tab(s)`;
-  else text = 'Sends to Groq: your message and recent chat (no pages)';
+  const to = `Sends to ${state.provider}`;
+  if (state.scope === 'page') text = t ? `${to}: your question + text of "${(t.title || hostnameOf(t.url)).slice(0, 40)}"` : '';
+  else if (state.scope === 'tabs') text = `${to}: your question + text of ${state.selected.size} selected tab(s)`;
+  else text = `${to}: your message and recent chat (no pages)`;
   els.outgoing.textContent = text;
 }
 
@@ -142,7 +168,7 @@ async function send() {
   const text = els.input.value.trim();
   if (!text) return;
   if (/^\/remember\b/i.test(text)) {
-    els.input.value = '';
+    clearInput();
     await saveMemoryDialog({ prefill: text.replace(/^\/remember\s*/i, ''), addMemory });
     return;
   }
@@ -173,7 +199,7 @@ function runTabs(task, question) {
 
 async function runGrounded(task, question, tabs, accessPromise) {
   setBusy(true);
-  els.input.value = '';
+  clearInput();
   const label = { summarize: 'Summarize', qa: 'Question', compare: 'Compare', research: 'Research' }[task];
   const userMsg = addMessage('user', question, `${label} · ${tabs.length === 1 ? tabs[0].title || tabs[0].url : `${tabs.length} tabs`}`);
   const pending = addMessage('assistant', spinner('Reading the page…'));
@@ -216,7 +242,7 @@ function renderResultMessage(result, question) {
 
 async function runChat(text) {
   setBusy(true);
-  els.input.value = '';
+  clearInput();
   const userMsg = addMessage('user', text);
   const pending = addMessage('assistant', spinner('Thinking…'));
   try {

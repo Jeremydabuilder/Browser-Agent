@@ -10,6 +10,8 @@
 | OpenAI API key (optional) | `%LOCALAPPDATA%\Satchel\openai-key.dat`, encrypted the same way | Only to OpenAI, as the HTTPS `Authorization` header, sent by the companion. Each key goes only to its own provider |
 | Cost estimates (monthly totals and request counts per provider) | `chrome.storage.local` (`spend`); reset any time in Settings → Costs | Never |
 | Companion status (ready / which keys exist, no key values) | `chrome.storage.session`, cleared when the browser closes | Never |
+| Sidebar layout (open section, Ask mode, open meeting) | `chrome.storage.local` | Never |
+| Unsent drafts (Ask question, tab command) | `chrome.storage.session` only, cleared when the browser closes | Only if you send them |
 | Settings, school pages, assignments, saved tab groups | `chrome.storage.local` (this browser profile) | Assignment pages only when you use AI extraction, after you confirm |
 | Memories | `chrome.storage.local` | Only if “Use in AI” is on (global and per-memory switches) |
 | Chat history | `chrome.storage.session` (memory only, cleared when the browser closes) | Only in “No page” chat, and only the last few turns |
@@ -43,6 +45,8 @@ Satchel has **no background monitoring**. The service worker only sets up the si
 | Site access (optional, per site) | Requested for each site the first time you ask Satchel to read it. Nothing is granted at install time. Revoke any site in the extension's Details page. |
 
 ## Companion hardening
+
+* **Installer (`SatchelSetup.exe`).** Per-user: it writes only to `%LOCALAPPDATA%\Satchel`, the Start menu, and `HKCU` (the two native messaging keys and a Settings > Apps entry), and never asks for administrator rights. It contains no API keys: the key is typed into the same `set-key.ps1` window as before, which validates it and stores it with DPAPI. The native messaging manifest uses a path relative to its own folder and allows only Satchel's fixed extension ID. The installer isn't code-signed, so Windows SmartScreen warns about it; `release/SatchelSetup.json` records its SHA-256, and `npm run lint` checks that the committed installer matches the current sources.
 
 * Implemented as a **native messaging host**: no network listener, so no other website or program on the network can talk to it. The browser registry entry (`HKCU\Software\{Google\Chrome|Microsoft\Edge}\NativeMessagingHosts\com.satchel.companion`) lists only Satchel's fixed extension ID in `allowed_origins`, and the host also checks the caller origin itself.
 * Accepts exactly four requests (`ping`, `models`, `chat`, `transcribe`), each for a provider of `groq` or `openai` (anything else is rejected). A `chat` body must be JSON with `model` and `messages`; audio parts are capped at 25 MB. `ping` reports only whether each key exists. Keys are never returned.
