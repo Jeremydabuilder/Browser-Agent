@@ -16,25 +16,21 @@ import { hostnameOf } from '../../lib/util.js';
 
 let root;
 let app;
-const state = { detailId: null, query: '', busy: false, pickerFallback: null, highlight: null, form: { title: '', titleEdited: false, mic: false, consent: false } };
+const state = { detailId: null, query: '', busy: false, pickerFallback: null, highlight: null, form: { titleEdited: false }, formEl: null };
 
 export function init(container, appRef) {
   root = container;
   app = appRef;
   app.onTargetTab(() => {
     if (root.hidden || state.detailId || state.busy) return;
-    // Don't redraw under the user's cursor; just update what the record form says it will capture.
-    if (root.contains(document.activeElement)) state.refreshRecordTarget?.();
-    else render();
+    // The form is persistent, so this only updates what it says it will capture.
+    state.refreshRecordTarget?.();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && changes.activeRecording && !root.hidden) renderBanner();
     // A recording just ended: refresh the list, but never redraw the form while the user is typing in it.
     if (area === 'session' && changes.activeRecording && !changes.activeRecording.newValue && !root.hidden && !state.busy) {
-      setTimeout(() => {
-        if (!root.contains(document.activeElement) && !document.querySelector('.overlay')) render();
-        else refreshList();
-      }, 500);
+      setTimeout(() => { if (state.detailId) render(); else refreshList(); }, 500);
     }
   });
   setInterval(tickBanner, 1000);
@@ -67,22 +63,34 @@ function download(name, text, type = 'text/plain') {
 }
 
 // ---------------------------------------------------------------- rendering
-// Renders are built off-screen and swapped in atomically; an older render that finishes late is dropped,
-// so overlapping renders can never duplicate the form or overwrite what you are typing.
+// The new-meeting form is created once and kept in the page, so redraws (tab switches, a recording
+// ending) never replace the field you are typing in. Only the banner, list, and detail page are rebuilt;
+// they are built off-screen and swapped in, and an older redraw that finishes late is dropped.
 let renderSeq = 0;
 let bannerInfo = null;
 async function render() {
   const my = ++renderSeq;
-  const out = h('div');
-  out.append(h('div', { id: 'rec-banner' }));
-  if (state.detailId) await renderDetail(state.detailId, out);
-  else out.append(renderNewMeeting(), await renderList());
+  if (state.detailId) {
+    const out = h('div');
+    out.append(h('div', { id: 'rec-banner' }));
+    await renderDetail(state.detailId, out);
+    if (my !== renderSeq) return;
+    clear(root);
+    root.append(...out.childNodes);
+    await renderBanner();
+    if (state.highlight) root.querySelector(`#seg-${CSS.escape(state.highlight)}`)?.scrollIntoView({ block: 'center' });
+    return;
+  }
+  const form = newMeetingForm();
+  const list = await renderList();
   if (my !== renderSeq) return;
-  clear(root);
-  root.append(...out.childNodes);
-  state.syncForm?.();
+  if (root.contains(form)) {
+    root.querySelector('#mtg-list-wrap')?.replaceWith(list);
+  } else {
+    clear(root);
+    root.append(h('div', { id: 'rec-banner' }), form, list);
+  }
   await renderBanner();
-  if (state.detailId && state.highlight) root.querySelector(`#seg-${CSS.escape(state.highlight)}`)?.scrollIntoView({ block: 'center' });
 }
 
 async function renderBanner() {
@@ -106,26 +114,28 @@ function tickBanner() {
   if (t && bannerInfo?.startedAt) t.textContent = formatClock((Date.now() - bannerInfo.startedAt) / 1000);
 }
 
-function renderNewMeeting() {
+function defaultTitle(tab) {
+  return tab && !unreadableReason(tab.url) ? `${(tab.title || hostnameOf(tab.url)).slice(0, 60)} – ${new Date().toLocaleDateString()}` : '';
+}
+
+/** Returns the persistent new-meeting form, creating it on first use and refreshing it afterwards. */
+function newMeetingForm() {
+  if (state.formEl) {
+    state.refreshRecordTarget();
+    return state.formEl;
+  }
   let tab = app.targetTab;
   let reason = tab ? unreadableReason(tab.url) : 'No tab is open.';
-  // Form values survive re-renders (e.g. when you switch tabs); the default title follows the tab until you edit it.
   const f = state.form;
-  if (!f.titleEdited) f.title = tab && !reason ? `${(tab.title || hostnameOf(tab.url)).slice(0, 60)} – ${new Date().toLocaleDateString()}` : '';
-  const title = h('input', { type: 'text', value: f.title, 'aria-label': 'New recording title' });
-  title.addEventListener('input', () => { f.title = title.value; f.titleEdited = true; });
-  const mic = h('input', { type: 'checkbox', id: 'mtg-mic', checked: f.mic });
-  mic.addEventListener('change', () => { f.mic = mic.checked; });
-  const consent = h('input', { type: 'checkbox', id: 'mtg-consent', checked: f.consent });
-  consent.addEventListener('change', () => { f.consent = consent.checked; });
-  // After an (asynchronous) render is swapped in, pick up anything typed in the meantime.
-  state.syncForm = () => {
-    if (f.titleEdited && title.value !== f.title) title.value = f.title;
-    mic.checked = f.mic;
-    consent.checked = f.consent;
-  };
+  // The default title follows the current tab until you edit it.
+  const title = h('input', { type: 'text', value: defaultTitle(tab), 'aria-label': 'New recording title' });
+  title.addEventListener('input', () => { f.titleEdited = true; });
+  const mic = h('input', { type: 'checkbox', id: 'mtg-mic' });
+  const consent = h('input', { type: 'checkbox', id: 'mtg-consent' });
   const captured = h('ul', { class: 'small' });
   const warning = h('div');
+  const fallbackSlot = h('div');
+  let startBtn = null;
   const updateCaptured = () => {
     clear(captured);
     clear(warning);
@@ -136,14 +146,22 @@ function renderNewMeeting() {
     captured.append(h('li', { class: 'muted' }, 'Not captured: other tabs, desktop apps (such as the Zoom app), your screen, or video.'));
   };
   mic.addEventListener('change', updateCaptured);
-  let startBtn = null;
   state.refreshRecordTarget = () => {
     tab = app.targetTab;
     reason = tab ? unreadableReason(tab.url) : 'No tab is open.';
+    if (!f.titleEdited && document.activeElement !== title) title.value = defaultTitle(tab);
     updateCaptured();
+    clear(fallbackSlot);
+    if (state.pickerFallback) fallbackSlot.append(renderPickerFallback());
   };
-
-  updateCaptured();
+  // After a recording starts, clear the form in place (consent is confirmed again for each recording).
+  state.resetForm = () => {
+    f.titleEdited = false;
+    title.value = defaultTitle(app.targetTab);
+    mic.checked = false;
+    consent.checked = false;
+    state.refreshRecordTarget();
+  };
   const recordCard = h('details', { class: 'card', open: true },
     h('summary', {}, '⏺ Record a meeting in a browser tab'),
     warning,
@@ -152,20 +170,22 @@ function renderNewMeeting() {
     h('label', { class: 'check' }, mic, ' Also record my microphone'),
     h('label', { class: 'check small' }, consent, ' I have told the other participants that I am recording and have their consent where it is required (laws and school rules differ).'),
     h('div', { class: 'btn-row' }, startBtn = h('button', { class: 'btn primary', disabled: !!reason, onclick: () => startRecording({ title: title.value, mic: mic.checked, consent: consent.checked }) }, '⏺ Start recording')),
-    state.pickerFallback ? renderPickerFallback() : null,
+    fallbackSlot,
     h('p', { class: 'muted small' }, 'Recording starts only when you press Start, runs in a small visible recorder window, and shows REC on the Satchel icon. Audio stays on this computer unless you later choose to send it to Groq for transcription.'));
+  updateCaptured();
 
   const file = h('input', { type: 'file', accept: 'audio/*,video/*,.m4a,.mp4,.mp3,.wav,.webm,.ogg,.flac', 'aria-label': 'Recording file' });
   const importTitle = h('input', { type: 'text', placeholder: 'Title (defaults to the file name)', 'aria-label': 'Imported meeting title' });
   const importStatus = h('div');
   const importCard = h('details', { class: 'card' },
     h('summary', {}, '⬆ Import a recording (Zoom app, phone, etc.)'),
-    h('p', { class: 'small' }, 'Supported: ', IMPORT_FORMATS.map((f) => f.label).join(', '), '.'),
+    h('p', { class: 'small' }, 'Supported: ', IMPORT_FORMATS.map((x) => x.label).join(', '), '.'),
     h('p', { class: 'muted small' }, `Limits: up to ${formatBytes(IMPORT_LIMITS.maxFileBytes)} and ${IMPORT_LIMITS.maxDurationSec / 3600} hours per file (the file is decoded in this browser). For a Zoom desktop recording, choose the “audio_only.m4a” file in Documents\\Zoom\\<meeting folder> (it is much smaller than the MP4). Satchel cannot record the Zoom desktop app, or other desktop apps, live.`),
     file, importTitle,
     h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', onclick: () => importRecording(file.files[0], importTitle.value, importStatus) }, 'Import')),
     importStatus);
-  return h('div', {}, recordCard, importCard);
+  state.formEl = h('div', {}, recordCard, importCard);
+  return state.formEl;
 }
 
 function renderPickerFallback() {
@@ -194,6 +214,7 @@ async function renderList() {
   search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => { state.query = search.value; clear(results); results.append(await renderResults()); }, 250); });
   const results = h('div', { id: 'mtg-results' });
   results.append(await renderResults());
+  wrap.id = 'mtg-list-wrap';
   wrap.append(h('h3', { style: 'margin-top:14px' }, 'Your meetings'), search, results);
   return wrap;
 }
@@ -259,7 +280,7 @@ async function startRecording({ title, mic, consent }) {
 
 async function openRecorder({ tab, title, mic, mode, streamId = '' }) {
   state.pickerFallback = null;
-  Object.assign(state.form, { title: '', titleEdited: false, mic: false, consent: false }); // reset in place; consent is confirmed again for each recording
+  state.resetForm?.();
   const meeting = await createMeeting({
     title,
     source: 'tab',
@@ -309,9 +330,8 @@ async function importRecording(file, title, statusEl) {
 
 // ---------------------------------------------------------------- detail
 async function renderDetail(id, out) {
-  state.syncForm = null;
   const m = await store.getMeeting(id);
-  if (!m) { state.detailId = null; out.append(renderNewMeeting(), await renderList()); return; }
+  if (!m) { state.detailId = null; out.append(newMeetingForm(), await renderList()); return; }
   const stats = await meetingStats(id);
   const tstats = transcriptStats(stats.chunks);
   const status = h('div', { id: 'mtg-status' });

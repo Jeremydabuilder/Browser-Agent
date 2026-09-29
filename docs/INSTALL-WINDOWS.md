@@ -107,7 +107,24 @@ Needs the one-time Google setup: **[docs/GOOGLE-SETUP.md](GOOGLE-SETUP.md)**. **
 * **Review & send…** shows the recipients, subject, and complete message. Sending needs the separate “Gmail: send replies you approve” connection, plus your click on **Send email** for each message. Without the send connection, use **Copy text** and send from Gmail yourself.
 
 ### Meetings
-> **Test status:** recording a browser tab, importing, transcription, and notes were tested in Chromium on Linux with a *simulated* Groq service. They have **not** yet been tried on Windows, in Edge, with a real Groq key, or with a real Zoom recording. Please run section H of [MANUAL-TESTS.md](MANUAL-TESTS.md).
+**What has been checked so far.** All automated tests ran on Linux in open-source Chromium. Nothing below has been tried on Windows or in Edge. Please run section H of [MANUAL-TESTS.md](MANUAL-TESTS.md).
+
+* **Tested** = the real feature ran in an automated test (on Linux Chromium).
+* **Simulated** = it ran against a stand-in (a fake Groq service, a fake microphone, or an automatically chosen tab).
+* **Untested** = not run at all yet.
+
+| Meetings capability | Status | Details |
+|---|---|---|
+| Record a browser tab: one-click (after clicking the Satchel icon on the tab) | **Untested** | Automation can't click the toolbar icon. Only the refusal message and fallback were checked. The playback that keeps the meeting audible in this mode is also untested. |
+| Record a browser tab: tab picker | **Tested on Linux, simulated picker** | Real capture of a local test page playing a tone, with the tab choice made automatically by a test flag. Recording, 5-minute chunk rotation, timer, REC badge, the page still playing, and stopping when the tab closes were all checked. **Not** tried with a real meeting site, on Windows, or in Edge. |
+| Microphone recording | **Simulated** | Chromium's fake microphone only. A real microphone, the permission prompt, and the denied-permission warning in a real browser are untested. |
+| Recovery after a closed recorder window or a browser crash | **Tested on Linux** | Audio saved up to about 2 s before the interruption is kept and playable. |
+| Import WAV | **Tested on Linux** | A generated WAV file is split into parts correctly. |
+| Import Zoom recordings (M4A/MP4) | **Untested** | Open-source Chromium can't decode AAC. Branded Chrome and Edge should, but no real Zoom file has been imported. |
+| Transcription | **Simulated** | The real companion uploads each part, one failed part is retried alone, and timestamps line up. Groq itself was a fake service, so real Whisper accuracy and rate limits are untested. |
+| Transcript correction, notes, timestamp links | **Simulated (Groq)** | The UI and the grounding rules are tested (invented decisions are dropped; owners and dates only when stated). The notes' wording came from a fake AI. |
+| Export (Markdown / plain text), search, rename | **Tested on Linux** | |
+| Separate deletion of audio, transcript, notes; no memory writes | **Tested on Linux** | |
 
 **Record a meeting that runs in a browser tab** (Google Meet, Zoom in the browser, Teams in the browser, and similar):
 1. Open the meeting tab. Then **click the Satchel toolbar icon while that tab is showing** (or press **Alt+Shift+S**, or right-click the page → **Record this tab with Satchel…**). Chrome and Edge only let an extension capture a tab after you invoke it on that tab.

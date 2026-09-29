@@ -189,6 +189,14 @@ export async function runMeetingSteps(env) {
     await panel.locator('#view-meetings summary', { hasText: 'Record a meeting' }).waitFor();
     await panel.locator('#view-meetings .card', { hasText: 'Meeting Fixture' }).first().waitFor({ timeout: 10000 });
     await panel.fill('#view-meetings input[aria-label="New recording title"]', title);
+    // Regression: redraws (tab switches, reopening the view) must not replace the field being typed in.
+    await panel.evaluate(() => { document.querySelector('[aria-label="New recording title"]').dataset.mark = 'typed'; });
+    const other = await context.newPage();
+    await other.close();
+    await fixture.bringToFront();
+    await showMeetings();
+    await panel.waitForTimeout(400);
+    assert.deepEqual(await panel.evaluate(() => { const el = document.querySelector('[aria-label="New recording title"]'); return [el.dataset.mark, el.value]; }), ['typed', title]);
     if (mic) await panel.check('#mtg-mic');
     await panel.click('#view-meetings button:has-text("Start recording")');
     const consentToast = await panel.locator('#toast.show', { hasText: 'confirm you have told participants' }).isVisible().catch(() => false);
