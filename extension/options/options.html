@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Satchel Settings</title>
+  <link rel="stylesheet" href="../styles/common.css">
+  <link rel="stylesheet" href="../styles/page.css">
+</head>
+<body>
+  <div class="page">
+    <div class="page-header"><img src="../icons/icon48.png" alt="" width="32" height="32"><h1>Satchel Settings</h1></div>
+    <nav class="toc"><a href="#companion">AI companion</a><a href="#model">AI providers</a><a href="#spending">Costs</a><a href="#privacy">Privacy</a><a href="#school">School</a><a href="#google">Google</a><a href="#data">Your data</a><a href="../memory/memory.html">Memory →</a></nav>
+
+    <section class="card" id="companion">
+      <h2>AI companion</h2>
+      <p class="muted">Satchel uses your AI accounts through a small companion program on your Windows PC. Your API keys are stored there, encrypted for your Windows account. They are never stored in the browser, the extension, logs, or Git.</p>
+      <div id="companion-status" class="status-line">Checking…</div>
+      <div id="key-status"></div>
+      <div class="btn-row"><button class="btn primary" id="test-companion">Test connection</button></div>
+      <details id="companion-help">
+        <summary>How to install the companion or change a key</summary>
+        <ol class="steps">
+          <li>Open the Satchel folder you downloaded, then <b>companion → windows</b>.</li>
+          <li>Double-click <b>install.cmd</b>. If Windows shows “Windows protected your PC”, click <b>More info → Run anyway</b>.</li>
+          <li>Paste your Groq API key (from <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>) when asked. Optionally add an OpenAI key too.</li>
+          <li><b>Restart the browser</b> (close every window), then press <b>Test connection</b> above.</li>
+        </ol>
+        <p class="muted small">Later, use the Start menu: <b>Satchel - Set Groq key</b>, <b>Satchel - Set OpenAI key</b>, and <b>Satchel - Check companion</b>. Nothing needs to start at login: the browser starts the companion when Satchel needs it.</p>
+      </details>
+    </section>
+
+    <section class="card" id="model">
+      <h2>AI providers and models</h2>
+      <p class="muted">Groq is the default. You can use OpenAI instead for either task (it needs an OpenAI key in the companion, and OpenAI charges per request). Model lists come live from each account, so retired models never appear. “Auto” picks a good available model.</p>
+      <div class="task-box">
+        <h3>Chat, page answers, school AI reading, email drafts and meeting notes</h3>
+        <div class="row">
+          <div><label for="chat-provider">Provider</label><select id="chat-provider"><option value="groq">Groq (default)</option><option value="openai">OpenAI</option></select></div>
+          <div><label for="model-select">Model</label><select id="model-select"><option value="auto">Auto (recommended)</option></select></div>
+        </div>
+        <div class="status-line" id="chat-uses">Checking…</div>
+      </div>
+      <div class="task-box">
+        <h3>Meeting transcription</h3>
+        <div class="row">
+          <div><label for="stt-provider">Provider</label><select id="stt-provider"><option value="groq">Groq (default)</option><option value="openai">OpenAI</option></select></div>
+          <div><label for="stt-model">Speech-to-text model</label><select id="stt-model"><option value="auto">Auto (recommended)</option></select></div>
+          <div><label for="stt-lang">Meeting language</label><select id="stt-lang"><option value="">Detect automatically</option><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="hi">Hindi</option><option value="pt">Portuguese</option><option value="ar">Arabic</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></div>
+        </div>
+        <div class="status-line" id="stt-uses">Checking…</div>
+      </div>
+      <div class="btn-row"><button class="btn" id="refresh-models">Refresh model lists</button></div>
+      <div class="row">
+        <div><label for="max-tokens">Max page text per request (tokens)</label><input type="number" id="max-tokens" min="1000" max="100000" step="500"></div>
+        <div><label for="timeout">Request timeout (seconds)</label><input type="number" id="timeout" min="10" max="180" step="5"></div>
+      </div>
+      <p class="muted small">Groq's free tier limits tokens per minute. If you see rate-limit messages often, lower the max page text or choose a smaller model. Long pages are automatically split or trimmed to fit.</p>
+    </section>
+
+    <section class="card" id="spending">
+      <h2>Cost estimates and OpenAI spending guard</h2>
+      <p class="muted">Before a meeting is transcribed, Satchel estimates the cost from the recording length and asks you to approve it. For OpenAI, Satchel also keeps a running monthly estimate of its own requests and <b>stops before sending more OpenAI requests</b> once your guard amount would be passed.</p>
+      <p class="warn small">This guard is Satchel's own estimate on this computer. It is <b>not</b> an OpenAI billing limit, and real charges can differ (price changes, rounding, requests from other apps). For a hard limit, set a budget in your OpenAI account (platform.openai.com → Settings → Limits).</p>
+      <div class="row">
+        <div><label for="budget">OpenAI spending guard (US$ per month, estimated; 0 blocks all OpenAI requests)</label><input type="number" id="budget" min="0" max="10000" step="0.5"></div>
+        <div><label>Used this month (Satchel's estimate)</label><div class="status-line" id="spend-used">…</div></div>
+        <button class="btn" id="reset-spend">Reset this month's estimate</button>
+      </div>
+      <details>
+        <summary>Prices used for estimates (edit if a provider changes its prices)</summary>
+        <p class="muted small">Defaults were copied from the providers' public price pages in September 2026. Change a price here if it has changed; leave it as is otherwise. Groq's free tier may cost you nothing.</p>
+        <div id="price-editor"></div>
+      </details>
+    </section>
+
+    <section class="card" id="privacy">
+      <h2>Privacy</h2>
+      <label class="check"><input type="checkbox" id="confirm-sending"> Ask before sending any page, email, or tab titles to the AI (recommended)</label>
+      <label class="check"><input type="checkbox" id="use-memories"> Include my saved memories in AI requests (you can also switch individual memories off)</label>
+      <p class="muted small">Satchel never monitors your browsing in the background and never sends your browsing history to Groq. It only reads a page when you ask it to, and it shows what will be sent.</p>
+    </section>
+
+    <section class="card" id="school">
+      <h2>School dates</h2>
+      <div class="row"><div><label for="date-order">How to read dates like 03/04</label>
+        <select id="date-order"><option value="MDY">Month/Day (US: 03/04 = March 4)</option><option value="DMY">Day/Month (03/04 = 3 April)</option></select></div></div>
+    </section>
+
+    <section class="card" id="google">
+      <h2>Google (Gmail and Classroom)</h2>
+      <p class="muted">Optional. Google requires every app to have its own “OAuth client ID”. Because Satchel is your personal extension, you create a free one in your Google account (about 10 minutes, one time).</p>
+      <details id="google-guide">
+        <summary>Step-by-step: create your OAuth client ID</summary>
+        <ol class="steps">
+          <li>Go to <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a> and create a project named “Satchel” (use a <b>personal</b> Google account if your school account cannot create projects).</li>
+          <li>Open <b>APIs &amp; Services → Library</b> and enable <b>Gmail API</b>. If you use Google Classroom, also enable <b>Google Classroom API</b>.</li>
+          <li>Open <b>Google Auth Platform</b> (or <b>OAuth consent screen</b>). Choose <b>External</b>, fill in the app name and your email. Under <b>Audience → Test users</b>, add the Google account(s) you will connect.</li>
+          <li>Open <b>Clients</b> (or <b>Credentials → Create credentials → OAuth client ID</b>). Application type: <b>Web application</b>.</li>
+          <li>Under <b>Authorized redirect URIs</b>, add exactly: <code id="redirect-uri">…</code> <button class="btn small" id="copy-redirect">Copy</button></li>
+          <li>Create it, copy the <b>Client ID</b> (ends with <code>.apps.googleusercontent.com</code>) and paste it below.</li>
+        </ol>
+        <p class="muted small">While the app is in “Testing”, Google shows an “unverified app” screen. That is expected for a personal app; click <b>Continue</b>. <b>School accounts:</b> many schools only allow apps approved by their Google administrator. If you see “Access blocked” or “admin_policy_enforced”, ask school IT to allow the client ID, or connect a personal account instead. The rest of Satchel works either way.</p>
+      </details>
+      <label for="client-id">OAuth client ID</label>
+      <div class="row"><input type="text" id="client-id" placeholder="1234567890-abc.apps.googleusercontent.com"><button class="btn" id="save-client-id">Save</button></div>
+      <h3 style="margin-top:14px;font-size:14px">Connections</h3>
+      <div id="google-connections"></div>
+      <div class="btn-row"><button class="btn" id="disconnect-google">Disconnect all Google access</button></div>
+    </section>
+
+    <section class="card" id="data">
+      <h2>Your data</h2>
+      <p class="muted">Everything Satchel saves stays in this browser profile: settings, assignments, saved tab groups, and memories. Chat history is kept only until you close the browser.</p>
+      <div class="btn-row">
+        <a class="btn" href="../memory/memory.html">Open Memory page</a>
+        <button class="btn" id="export-assignments">Export assignments (JSON)</button>
+        <button class="btn" id="clear-assignments">Delete all assignments</button>
+        <button class="btn" id="clear-saved-tabs">Delete saved tab groups</button>
+      </div>
+      <p class="muted small">Extension ID: <code id="ext-id"></code></p>
+    </section>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Satchel recorder</title>
+  <link rel="stylesheet" href="../styles/common.css">
+  <link rel="stylesheet" href="recorder.css">
+</head>
+<body>
+  <div class="rec-wrap">
+    <div class="rec-head"><span id="dot" class="dot" aria-hidden="true"></span><h1 id="state-label">Preparing…</h1><span id="timer" class="timer" aria-live="off">00:00</span></div>
+    <p id="meeting-title" class="muted small"></p>
+    <div id="sources" class="sources small"></div>
+    <div id="warnings"></div>
+    <div id="choose" class="card soft" hidden>
+      <p class="small">Choose the browser tab that has your meeting. In the browser's dialog, pick the <b>tab</b> and make sure <b>“Also share tab audio”</b> is ticked.</p>
+      <button class="btn primary" id="choose-btn">Choose meeting tab…</button>
+    </div>
+    <div class="btn-row"><button class="btn danger" id="stop" hidden>■ Stop recording</button><button class="btn" id="close" hidden>Close window</button></div>
+    <p id="saved" class="small muted"></p>
+    <p class="muted small">Keep this window open while recording. You can minimize it. Audio is saved on this computer every few seconds.</p>
+  </div>
+  <script type="module" src="recorder.js"></script>
+</body>
+</html>

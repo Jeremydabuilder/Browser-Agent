@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Satchel</title>
+  <link rel="stylesheet" href="../styles/common.css">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><img src="../icons/icon32.png" alt="" width="20" height="20"> Satchel</div>
+    <button id="companion-status" class="status-pill" title="AI companion status">AI: checking…</button>
+    <div class="header-actions">
+      <a class="icon-btn" id="open-memory" href="../memory/memory.html" target="_blank" title="Memory">🧠</a>
+      <a class="icon-btn" id="open-settings" href="../options/options.html" target="_blank" title="Settings">⚙️</a>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-view="ask" aria-selected="true">Ask</button>
+    <button role="tab" data-view="school">School</button>
+    <button role="tab" data-view="tabs">Tabs</button>
+    <button role="tab" data-view="meetings">Meetings</button>
+    <button role="tab" data-view="email">Email</button>
+  </nav>
+  <div id="activity" class="activity" hidden aria-live="polite"></div>
+  <main>
+    <section id="view-ask" class="view" role="tabpanel"></section>
+    <section id="view-school" class="view" role="tabpanel" hidden></section>
+    <section id="view-tabs" class="view" role="tabpanel" hidden></section>
+    <section id="view-meetings" class="view" role="tabpanel" hidden></section>
+    <section id="view-email" class="view" role="tabpanel" hidden></section>
+  </main>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
